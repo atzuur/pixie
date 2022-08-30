@@ -1,0 +1,29 @@
+---
+BasedOnStyle: LLVM
+AlignAfterOpenBracket: Align
+AlignEscapedNewlines: Left
+AlignOperands: 'true'
+AlignTrailingComments: 'false'
+AllowAllConstructorInitializersOnNextLine: 'false'
+AllowShortCaseLabelsOnASingleLine: 'false'
+AllowShortFunctionsOnASingleLine: Empty
+BreakBeforeBinaryOperators: None
+BreakBeforeTernaryOperators: 'true'
+BreakConstructorInitializers: AfterColon
+BreakInheritanceList: AfterColon
+ColumnLimit: '100'
+IndentWidth: '4'
+IndentWrappedFunctionNames: 'false'
+NamespaceIndentation: All
+PointerAlignment: Left
+ReflowComments: 'true'
+SortIncludes: 'true'
+SortUsingDeclarations: 'true'
+SpaceAfterCStyleCast: 'false'
+SpaceAfterTemplateKeyword: 'false'
+SpaceBeforeCpp11BracedList: 'true'
+SpaceBeforeCtorInitializerColon: 'true'
+Standard: Auto
+UseTab: Never
+
+...

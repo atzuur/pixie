@@ -27,7 +27,7 @@
 #endif
 
 typedef struct PXThread {
-	void(*func);
+	void* (*func)(void *);
 	void* args;
 
 #ifdef C11_THREADS
