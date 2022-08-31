@@ -1,2 +1,2 @@
 # pixie
-Simple and fast video filtering
+Simple and fast video filtering (WIP)
