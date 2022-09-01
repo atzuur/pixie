@@ -17,8 +17,8 @@ typedef struct CodingContext {
     unsigned int astream_idx;
 } CodingContext;
 
-int open_input(CodingContext* ctx, const char* file, const char* decoder_name);
-int open_decoder(AVCodecContext** ctx, const AVCodec* codec, AVCodecParameters* param);
+int open_input(CodingContext* ctx, const char* file);
+int open_decoder(AVCodecContext** ctx, const AVCodec* codec, AVCodecParameters* params);
 int decode_frame(CodingContext* ctx, AVFrame* frame, AVPacket* packet);
 
 int open_output(AVFormatContext* input, CodingContext* output, const char* file);

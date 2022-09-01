@@ -1,7 +1,8 @@
 #include "incl/coding.h"
 #include <libavformat/avformat.h>
+#include <string.h>
 
-int open_input(CodingContext* ctx, const char* filename, const char* decoder_name) {
+int open_input(CodingContext* ctx, const char* filename) {
 
     int ret;
     int i;
@@ -26,8 +27,7 @@ int open_input(CodingContext* ctx, const char* filename, const char* decoder_nam
         const int stream_type = ctx->fmt_ctx->streams[i]->codecpar->codec_type;
 
         if (stream_type == AVMEDIA_TYPE_VIDEO) {
-            ctx->codec_ctx->framerate =
-                av_guess_frame_rate(ctx->fmt_ctx, ctx->fmt_ctx->streams[i], NULL);
+
             ctx->vstream_idx = i;
             vstream_found = 1;
 
@@ -54,6 +54,11 @@ int open_input(CodingContext* ctx, const char* filename, const char* decoder_nam
         if ((ret = open_decoder(&ctx->codec_ctx, decoder, ctx->fmt_ctx->streams[i]->codecpar))) {
             die(ctx, "Failed to open decoder\n");
             return ret;
+        }
+
+        if (i == ctx->vstream_idx) {
+            ctx->codec_ctx->framerate =
+                av_guess_frame_rate(ctx->fmt_ctx, ctx->fmt_ctx->streams[i], NULL);
         }
     }
 
@@ -158,6 +163,9 @@ int open_encoder(CodingContext* ctx, char* encoder_name, AVDictionary** enc_opti
     int ret;
 
     const AVCodec* encoder = avcodec_find_encoder_by_name(encoder_name);
+    if (!encoder)
+        encoder = avcodec_find_encoder(input_params->codec_id);
+
     ctx->codec_ctx = avcodec_alloc_context3(encoder);
     if (!ctx->codec_ctx) {
         die(ctx, "Failed to allocate encoder context\n");
@@ -217,4 +225,75 @@ void close_coding_context(CodingContext* ctx) {
     ctx->vstream_idx = 0;
 }
 
-int main(int argc, char** argv) {}
+int main(int argc, char** argv) {
+
+    int ret;
+
+    if (argc < 3) {
+        av_log(NULL, AV_LOG_ERROR,
+               "Usage: %s <input file>"
+               " <output file> [-e <encoding settings>] ",
+               argv[0]);
+        return -1;
+    }
+
+    CodingContext input = {0};
+    CodingContext output = {0};
+
+    if ((ret = open_input(&input, argv[1])) < 0) {
+        die(&input, "Failed to open input file\n");
+        return ret;
+    }
+
+    if ((ret = open_output(input.fmt_ctx, &output, argv[2])) < 0) {
+        die(&output, "Failed to open output file\n");
+        return ret;
+    }
+
+    AVPacket packet = {0};
+
+    AVFrame* frame = av_frame_alloc();
+    if (!frame) {
+        die(&input, "Failed to allocate frame\n");
+        return AVERROR(ENOMEM);
+    }
+
+    char* enc_name = NULL;
+    AVDictionary* enc_options = NULL;
+    if (argc > 3) {
+        if (argv[3][0] == '-' && argv[3][1] == 'e') {
+
+            if (argc < 5) {
+                av_log(NULL, AV_LOG_ERROR, "No encoder provided\n");
+                return -1;
+            }
+
+            enc_name = strtok(argv[4], ":");
+            char* enc_opts = strtok(NULL, ":");
+            if (enc_opts) {
+                if ((ret = av_dict_parse_string(&enc_options, enc_opts, "=", ",", 0)) < 0) {
+                    die(&input, "Failed to parse encoding options\n");
+                    return ret;
+                }
+            }
+
+        } else {
+            av_log(NULL, AV_LOG_ERROR, "Unknown option: %s\n", argv[3]);
+            return -1;
+        }
+    }
+
+    // open encoder for video stream [and audio stream if it exists]
+    for (int i = input.vstream_idx; i <= input.vstream_idx + input.astream_idx;
+         i += input.astream_idx) {
+
+        if ((ret = open_encoder(&output, enc_name, &enc_options,
+                                input.fmt_ctx->streams[input.vstream_idx]->time_base,
+                                input.fmt_ctx->streams[input.vstream_idx]->codecpar)) < 0) {
+            die(&output, "Failed to open encoder\n");
+            return ret;
+        }
+    }
+
+    return 0;
+}
