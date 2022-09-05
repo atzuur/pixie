@@ -228,6 +228,7 @@ void close_coding_context(CodingContext* ctx) {
 int main(int argc, char** argv) {
 
     int ret;
+    int i;
 
     if (argc < 3) {
         av_log(NULL, AV_LOG_ERROR,
@@ -284,7 +285,7 @@ int main(int argc, char** argv) {
     }
 
     // open encoder for video stream [and audio stream if it exists]
-    for (int i = input.vstream_idx; i <= input.vstream_idx + input.astream_idx;
+    for (i = input.vstream_idx; i <= input.vstream_idx + input.astream_idx;
          i += input.astream_idx) {
 
         if ((ret = open_encoder(&output, enc_name, &enc_options,

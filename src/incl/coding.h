@@ -9,7 +9,7 @@
         close_coding_context(ctx);                      \
     } while (0)
 
-typedef struct CodingContext {
+typedef struct StreanContext {
     AVFormatContext* fmt_ctx;
     AVCodecContext* codec_ctx;
 
