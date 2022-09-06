@@ -1,5 +1,9 @@
 #include "incl/coding.h"
+#include "util/thread.h"
+#include <libavcodec/packet.h>
 #include <libavformat/avformat.h>
+
+#include <libavutil/log.h>
 #include <string.h>
 
 int open_input(CodingContext* ctx, const char* filename) {
@@ -243,20 +247,24 @@ int main(int argc, char** argv) {
 
     if ((ret = open_input(&input, argv[1])) < 0) {
         die(&input, "Failed to open input file\n");
-        return ret;
+        goto end;
     }
 
     if ((ret = open_output(input.fmt_ctx, &output, argv[2])) < 0) {
         die(&output, "Failed to open output file\n");
-        return ret;
+        goto end;
     }
 
-    AVPacket packet = {0};
+    AVPacket* packet = av_packet_alloc();
+    if (!packet) {
+        av_log(NULL, AV_LOG_ERROR, "Failed to allocate packet\n");
+        goto end;
+    }
 
     AVFrame* frame = av_frame_alloc();
     if (!frame) {
-        die(&input, "Failed to allocate frame\n");
-        return AVERROR(ENOMEM);
+        av_log(NULL, AV_LOG_ERROR, "Failed to allocate frame\n");
+        goto end;
     }
 
     char* enc_name = NULL;
@@ -266,21 +274,21 @@ int main(int argc, char** argv) {
 
             if (argc < 5) {
                 av_log(NULL, AV_LOG_ERROR, "No encoder provided\n");
-                return -1;
+                goto end;
             }
 
             enc_name = strtok(argv[4], ":");
             char* enc_opts = strtok(NULL, ":");
             if (enc_opts) {
                 if ((ret = av_dict_parse_string(&enc_options, enc_opts, "=", ",", 0)) < 0) {
-                    die(&input, "Failed to parse encoding options\n");
-                    return ret;
+                    av_log(NULL, AV_LOG_ERROR, "Failed to parse encoding options\n");
+                    goto end;
                 }
             }
 
         } else {
             av_log(NULL, AV_LOG_ERROR, "Unknown option: %s\n", argv[3]);
-            return -1;
+            goto end;
         }
     }
 
@@ -291,10 +299,36 @@ int main(int argc, char** argv) {
         if ((ret = open_encoder(&output, enc_name, &enc_options,
                                 input.fmt_ctx->streams[input.vstream_idx]->time_base,
                                 input.fmt_ctx->streams[input.vstream_idx]->codecpar)) < 0) {
-            die(&output, "Failed to open encoder\n");
-            return ret;
+            av_log(NULL, AV_LOG_ERROR, "Failed to open encoder\n");
+            goto end;
         }
     }
 
-    return 0;
+    while (1) {
+
+        if ((ret = av_read_frame(input.fmt_ctx, packet)) < 0)
+            break;
+
+        if (packet->stream_index == input.vstream_idx ||
+            packet->stream_index == input.astream_idx) {
+            ret = decode_frame(&input, frame, packet);
+        }
+    }
+
+end:
+    if (output.fmt_ctx) {
+        close_output_file(output.fmt_ctx);
+        close_coding_context(&output);
+    }
+
+    if (input.fmt_ctx)
+        close_coding_context(&input);
+
+    if (enc_options)
+        av_dict_free(&enc_options);
+
+    if (packet)
+        av_packet_free(&packet);
+
+    return ret ? 1 : 0;
 }
