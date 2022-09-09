@@ -15,6 +15,7 @@ ColumnLimit: '100'
 IndentWidth: '4'
 IndentWrappedFunctionNames: 'false'
 NamespaceIndentation: All
+IndentCaseLabels: 'true'
 PointerAlignment: Left
 ReflowComments: 'true'
 SortIncludes: 'true'

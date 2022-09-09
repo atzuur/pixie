@@ -50,3 +50,12 @@ modules.order
 Module.symvers
 Mkfile.old
 dkms.conf
+
+# media files
+*.y4m
+*.mp4
+*.mkv
+*.avi
+*.flac
+*.m4a
+*.ogg
