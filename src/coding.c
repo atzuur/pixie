@@ -1,13 +1,5 @@
 #include "incl/coding.h"
-#include "util/thread.h"
-#include <libavcodec/packet.h>
 #include <libavformat/avformat.h>
-
-#include <libavformat/avio.h>
-#include <libavutil/avutil.h>
-#include <libavutil/frame.h>
-#include <libavutil/log.h>
-#include <string.h>
 
 int open_input(CodingContext* ctx, const char* filename) {
 
@@ -186,7 +178,7 @@ int open_encoder(CodingContext* ctx, char* encoder_name, AVDictionary** enc_opti
     return 0;
 }
 
-int encode_frame(CodingContext* ctx, AVFrame* frame, AVPacket* packet, unsigned int stream_index) {
+int encode_frame(CodingContext* ctx, AVFrame* frame, AVPacket* packet, unsigned int stream_idx) {
 
     int ret;
     av_packet_unref(packet);
@@ -201,9 +193,9 @@ int encode_frame(CodingContext* ctx, AVFrame* frame, AVPacket* packet, unsigned 
         if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF)
             return 0;
 
-        packet->stream_index = stream_index;
+        packet->stream_index = stream_idx;
         av_packet_rescale_ts(packet, ctx->codec_ctx->time_base,
-                             ctx->fmt_ctx->streams[stream_index]->time_base);
+                             ctx->fmt_ctx->streams[stream_idx]->time_base);
 
         ret = av_interleaved_write_frame(ctx->fmt_ctx, packet);
     }
@@ -211,10 +203,10 @@ int encode_frame(CodingContext* ctx, AVFrame* frame, AVPacket* packet, unsigned 
     return ret;
 }
 
-int flush_encoder(CodingContext* ctx, AVFrame* frame, AVPacket* packet, unsigned int stream_idx) {
-    if (!(ctx->codec_ctx->codec->capabilities & AV_CODEC_CAP_DELAY))
-        return 0;
-    return encode_frame(ctx, frame, packet, stream_idx);
+int flush_encoder(CodingContext* ctx, AVPacket* packet, unsigned int stream_idx) {
+    return (ctx->codec_ctx->codec->capabilities & AV_CODEC_CAP_DELAY)
+               ? encode_frame(ctx, 0, packet, stream_idx)
+               : 0;
 }
 
 int close_output_file(AVFormatContext* fmt_ctx) {
@@ -227,7 +219,7 @@ int close_output_file(AVFormatContext* fmt_ctx) {
     }
 
     if (!(fmt_ctx->oformat->flags & AVFMT_NOFILE)) {
-        if ((ret = avio_closep(&fmt_ctx->pb) < 0)) {
+        if ((ret = avio_close(fmt_ctx->pb) < 0)) {
             av_log(NULL, AV_LOG_ERROR, "Failed to close output file\n");
             return ret;
         }
@@ -238,13 +230,13 @@ int close_output_file(AVFormatContext* fmt_ctx) {
 
 void close_coding_context(CodingContext* ctx) {
     if (ctx->codec_ctx) {
-        avcodec_close(ctx->codec_ctx);
         avcodec_free_context(&ctx->codec_ctx);
         ctx->codec_ctx = 0;
     }
 
     if (ctx->fmt_ctx) {
-        avformat_close_input(&ctx->fmt_ctx);
+        avformat_free_context(ctx->fmt_ctx);
+        ctx->fmt_ctx = 0;
     }
 }
 
@@ -253,12 +245,25 @@ int main(int argc, char** argv) {
     int ret;
     int i;
 
+    AVPacket* packet = av_packet_alloc();
+    if (!packet) {
+        av_log(NULL, AV_LOG_ERROR, "Failed to allocate packet\n");
+        goto end;
+    }
+
+    AVFrame* frame = av_frame_alloc();
+    if (!frame) {
+        av_log(NULL, AV_LOG_ERROR, "Failed to allocate frame\n");
+        goto end;
+    }
+
     if (argc < 3) {
         av_log(NULL, AV_LOG_ERROR,
                "Usage: %s <input file>"
                " <output file> [-e <encoding settings>]\n",
                argv[0]);
-        return -1;
+        ret = 1;
+        goto end;
     }
 
     CodingContext input = {0};
@@ -271,18 +276,6 @@ int main(int argc, char** argv) {
 
     if ((ret = open_output(input.fmt_ctx, &output, argv[2])) < 0) {
         die(&output, "Failed to open output file\n");
-        goto end;
-    }
-
-    AVPacket* packet = av_packet_alloc();
-    if (!packet) {
-        av_log(NULL, AV_LOG_ERROR, "Failed to allocate packet\n");
-        goto end;
-    }
-
-    AVFrame* frame = av_frame_alloc();
-    if (!frame) {
-        av_log(NULL, AV_LOG_ERROR, "Failed to allocate frame\n");
         goto end;
     }
 
@@ -326,19 +319,19 @@ int main(int argc, char** argv) {
         }
     }
 
-    AVStream* curr_in_stream;
-    AVStream* curr_out_stream;
+    AVStream* cur_in_stream;
+    AVStream* cur_out_stream;
 
     while (1) {
 
         if ((ret = av_read_frame(input.fmt_ctx, packet)) < 0)
             goto end;
 
-        curr_in_stream = input.fmt_ctx->streams[packet->stream_index];
-        curr_out_stream = output.fmt_ctx->streams[packet->stream_index];
+        cur_in_stream = input.fmt_ctx->streams[packet->stream_index];
+        cur_out_stream = output.fmt_ctx->streams[packet->stream_index];
 
-        if (curr_in_stream->codecpar->codec_type == AVMEDIA_TYPE_VIDEO ||
-            curr_in_stream->codecpar->codec_type == AVMEDIA_TYPE_AUDIO) {
+        if (cur_in_stream->codecpar->codec_type == AVMEDIA_TYPE_VIDEO ||
+            cur_in_stream->codecpar->codec_type == AVMEDIA_TYPE_AUDIO) {
 
             ret = decode_frame(&input, frame, packet);
             if (ret < 0) {
@@ -356,7 +349,7 @@ int main(int argc, char** argv) {
 
         } else {
             // remux this frame without reencoding
-            av_packet_rescale_ts(packet, curr_in_stream->time_base, curr_out_stream->time_base);
+            av_packet_rescale_ts(packet, cur_in_stream->time_base, cur_out_stream->time_base);
             ret = av_interleaved_write_frame(output.fmt_ctx, packet);
             if (ret < 0)
                 goto end;
@@ -365,35 +358,30 @@ int main(int argc, char** argv) {
         av_packet_unref(packet);
     }
 
-    // flush encoders
     for (int i = 0; i < input.fmt_ctx->nb_streams; i++) {
-        if (input.fmt_ctx->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_VIDEO ||
-            input.fmt_ctx->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_AUDIO) {
-            ret = flush_encoder(&output, i);
-            if (ret < 0) {
-                av_log(NULL, AV_LOG_ERROR, "Failed to flush encoder\n");
-                goto end;
-            }
+        ret = flush_encoder(&output, packet, i);
+        if (ret < 0) {
+            av_log(NULL, AV_LOG_ERROR, "Failed to flush encoder\n");
+            goto end;
         }
     }
 
 end:
+    if (input.fmt_ctx) {
+        close_coding_context(&input);
+        avformat_close_input(&input.fmt_ctx);
+    }
+
     if (output.fmt_ctx) {
         close_output_file(output.fmt_ctx);
         close_coding_context(&output);
     }
 
-    if (input.fmt_ctx)
-        close_coding_context(&input);
+    av_packet_free(&packet);
+    av_frame_free(&frame);
 
-    if (enc_options)
-        av_dict_free(enc_options);
-
-    if (packet)
-        av_packet_free(&packet);
-
-    if (frame)
-        av_frame_free(&frame);
+    if (ret < 0)
+        av_log(NULL, AV_LOG_ERROR, "Error occurred: %s\n", av_err2str(ret));
 
     return ret ? 1 : 0;
 }
