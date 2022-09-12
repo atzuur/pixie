@@ -1,18 +1,39 @@
 #include "incl/coding.h"
+#include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
+#include <libavutil/frame.h>
+#include <libavutil/mem.h>
+
+int init_px_mediactx(PXMediaContext* ctx) {
+
+    ctx->ifmt_ctx = NULL;
+    ctx->ofmt_ctx = NULL;
+
+    ctx->stream_ctx_vec->dec_frame = av_frame_alloc();
+    if (!ctx->stream_ctx_vec->dec_frame)
+        return AVERROR(ENOMEM);
+
+    ctx->stream_ctx_vec->pkt = av_packet_alloc();
+    if (!ctx->stream_ctx_vec->pkt)
+        return AVERROR(ENOMEM);
+
+    return 0;
+}
 
 int open_input(CodingContext* ctx, const char* filename) {
 
     int ret;
     int i;
 
+    ctx->fmt_ctx = avformat_alloc_context();
+
     if ((ret = avformat_open_input(&ctx->fmt_ctx, filename, NULL, NULL)) < 0) {
-        die(ctx, "Cannot open input file: '%s'\n", filename);
+        av_log(NULL, AV_LOG_ERROR, "Cannot open input file: '%s'\n", filename);
         return ret;
     }
 
     if ((ret = avformat_find_stream_info(ctx->fmt_ctx, NULL)) < 0) {
-        die(ctx, "Cannot find stream information\n");
+        av_log(NULL, AV_LOG_ERROR, "Cannot find stream information\n");
         return ret;
     }
 
@@ -35,19 +56,19 @@ int open_input(CodingContext* ctx, const char* filename) {
             const AVCodec* decoder =
                 avcodec_find_decoder(ctx->fmt_ctx->streams[i]->codecpar->codec_id);
             if (!decoder) {
-                die(ctx, "Failed to find decoder for video stream %d\n", i);
+                av_log(NULL, AV_LOG_ERROR, "Failed to find decoder for video stream %d\n", i);
                 return AVERROR_DECODER_NOT_FOUND;
             }
 
             if ((ret = open_decoder(ctx->codec_ctx, decoder, ctx->fmt_ctx->streams[i]->codecpar))) {
-                die(ctx, "Failed to open decoder\n");
+                av_log(NULL, AV_LOG_ERROR, "Failed to open decoder\n");
                 return ret;
             }
         }
     }
 
     if (!ctx->vstream_found) {
-        die(ctx, "Cannot find video stream\n");
+        av_log(NULL, AV_LOG_ERROR, "Cannot find video stream\n");
         return AVERROR_STREAM_NOT_FOUND;
     }
 
@@ -75,8 +96,7 @@ int open_decoder(AVCodecContext* ctx, const AVCodec* dec, AVCodecParameters* par
     }
 
     if ((ret = avcodec_open2(ctx, dec, NULL)) < 0) {
-        // no message here as it'd just be a duplicate of the one from open_input()
-        avcodec_free_context(&ctx);
+        // no message here as it'd just be a duplicate
         return ret;
     }
 
@@ -108,7 +128,7 @@ int open_output(AVFormatContext* input, CodingContext* output, const char* filen
     int ret;
 
     if ((ret = avformat_alloc_output_context2(&output->fmt_ctx, NULL, NULL, filename)) < 0) {
-        die(output, "Failed to allocate output context\n");
+        av_log(NULL, AV_LOG_ERROR, "Failed to allocate output context\n");
         return AVERROR_UNKNOWN;
     }
 
@@ -118,12 +138,13 @@ int open_output(AVFormatContext* input, CodingContext* output, const char* filen
     for (int i = 0; i < input->nb_streams; i++) {
         ostream = avformat_new_stream(output->fmt_ctx, 0);
         if (!ostream) {
-            die(output, "Failed to add output stream\n");
+            av_log(NULL, AV_LOG_ERROR, "Failed to add output stream\n");
+            return AVERROR_UNKNOWN;
         }
 
         if ((ret = avcodec_parameters_copy(ostream->codecpar, input->streams[i]->codecpar)) < 0) {
-            die(output, "Failed to copy codec parameters to output stream\n");
-            return 1;
+            av_log(NULL, AV_LOG_ERROR, "Failed to copy codec parameters to output stream\n");
+            return ret;
         }
     }
 
@@ -156,7 +177,7 @@ int open_encoder(CodingContext* ctx, char* encoder_name, AVDictionary** enc_opti
 
     ctx->codec_ctx = avcodec_alloc_context3(encoder);
     if (!ctx->codec_ctx) {
-        die(ctx, "Failed to allocate encoder context\n");
+        av_log(NULL, AV_LOG_ERROR, "Failed to allocate encoder context\n");
         return AVERROR(ENOMEM);
     }
 
@@ -171,7 +192,7 @@ int open_encoder(CodingContext* ctx, char* encoder_name, AVDictionary** enc_opti
         ctx->codec_ctx->flags |= AVFMT_GLOBALHEADER;
 
     if ((ret = avcodec_open2(ctx->codec_ctx, encoder, enc_options)) < 0) {
-        die(ctx, "Failed to open encoder\n");
+        av_log(NULL, AV_LOG_ERROR, "Failed to open encoder\n");
         return ret;
     }
 
@@ -244,6 +265,13 @@ int main(int argc, char** argv) {
 
     int ret;
     int i;
+    char output_open_success = 1;
+
+    char* enc_name = NULL;
+    AVDictionary* enc_opts_dict = NULL;
+
+    CodingContext input = {0};
+    CodingContext output = {0};
 
     AVPacket* packet = av_packet_alloc();
     if (!packet) {
@@ -266,23 +294,21 @@ int main(int argc, char** argv) {
         goto end;
     }
 
-    CodingContext input = {0};
-    CodingContext output = {0};
-
     if ((ret = open_input(&input, argv[1])) < 0) {
-        die(&input, "Failed to open input file\n");
+        av_log(NULL, AV_LOG_ERROR, "Failed to open input file\n");
         goto end;
     }
 
     if ((ret = open_output(input.fmt_ctx, &output, argv[2])) < 0) {
-        die(&output, "Failed to open output file\n");
+        av_log(NULL, AV_LOG_ERROR, "Failed to open output file\n");
+        output_open_success = 0;
         goto end;
     }
 
-    char* enc_name = NULL;
-    AVDictionary** enc_options = {0};
     if (argc > 3) {
         if (argv[3][0] == '-' && argv[3][1] == 'e') {
+
+            av_log(NULL, AV_LOG_INFO, "Parsing encoding settings\n");
 
             if (argc < 5) {
                 av_log(NULL, AV_LOG_ERROR, "No encoder provided\n");
@@ -292,10 +318,12 @@ int main(int argc, char** argv) {
             enc_name = strtok(argv[4], ":");
             char* enc_opts = strtok(NULL, ":");
             if (enc_opts) {
-                if ((ret = av_dict_parse_string(enc_options, enc_opts, "=", ",", 0)) < 0) {
+                if ((ret = av_dict_parse_string(&enc_opts_dict, enc_opts, "=", ",", 0)) < 0) {
                     av_log(NULL, AV_LOG_ERROR, "Failed to parse encoding options\n");
                     goto end;
                 }
+                av_log(NULL, AV_LOG_INFO, "Encoding settings %s parsed and set to dict at %p\n",
+                       enc_opts, enc_opts_dict);
             }
 
         } else {
@@ -304,15 +332,30 @@ int main(int argc, char** argv) {
         }
     }
 
-    // open encoder for video and audio streams
+    // open codecs
     for (i = 0; i < input.fmt_ctx->nb_streams; i++) {
 
         int stream_type = input.fmt_ctx->streams[i]->codecpar->codec_type;
-
         if (stream_type == AVMEDIA_TYPE_VIDEO || stream_type == AVMEDIA_TYPE_AUDIO) {
-            if ((ret = open_encoder(&output, enc_name, enc_options,
-                                    input.fmt_ctx->streams[i]->time_base,
-                                    input.fmt_ctx->streams[i]->codecpar)) < 0) {
+
+            const AVCodec* decoder =
+                avcodec_find_decoder(input.fmt_ctx->streams[i]->codecpar->codec_id);
+
+            if (!decoder) {
+                av_log(NULL, AV_LOG_ERROR, "Failed to find decoder for video stream %d\n", i);
+                return AVERROR_DECODER_NOT_FOUND;
+            }
+
+            ret = open_decoder(input.codec_ctx, decoder, input.fmt_ctx->streams[i]->codecpar);
+            if (ret < 0) {
+                av_log(NULL, AV_LOG_ERROR, "Failed to open decoder\n");
+                goto end;
+            }
+
+            ret = open_encoder(&output, enc_name, &enc_opts_dict,
+                               input.fmt_ctx->streams[i]->time_base,
+                               input.fmt_ctx->streams[i]->codecpar);
+            if (ret < 0) {
                 av_log(NULL, AV_LOG_ERROR, "Failed to open encoder\n");
                 goto end;
             }
@@ -367,18 +410,18 @@ int main(int argc, char** argv) {
     }
 
 end:
-    if (input.fmt_ctx) {
-        close_coding_context(&input);
-        avformat_close_input(&input.fmt_ctx);
-    }
+    close_coding_context(&input);
+    avformat_close_input(&input.fmt_ctx);
 
-    if (output.fmt_ctx) {
+    close_coding_context(&output);
+
+    if (output_open_success)
         close_output_file(output.fmt_ctx);
-        close_coding_context(&output);
-    }
 
     av_packet_free(&packet);
     av_frame_free(&frame);
+
+    av_dict_free(&enc_opts_dict);
 
     if (ret < 0)
         av_log(NULL, AV_LOG_ERROR, "Error occurred: %s\n", av_err2str(ret));

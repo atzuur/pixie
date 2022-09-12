@@ -3,29 +3,28 @@
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
 
-#define die(ctx, fmt, ...)                              \
-    do {                                                \
-        av_log(NULL, AV_LOG_ERROR, fmt, ##__VA_ARGS__); \
-        close_coding_context(ctx);                      \
-    } while (0)
+typedef struct PXStreamContext {
+    AVCodecContext* dec_ctx;
+    AVCodecContext* enc_ctx;
 
-typedef struct CodingContext {
-    AVFormatContext* fmt_ctx;
-    AVCodecContext* codec_ctx;
+    AVFrame* dec_frame;
+    AVPacket* pkt;
+} PXStreamContext;
 
-    unsigned char vstream_found;
-    unsigned char astream_found;
-} CodingContext;
+typedef struct PXMediaContext {
+    AVFormatContext* ifmt_ctx;
+    AVFormatContext* ofmt_ctx;
 
-int open_input(CodingContext* ctx, const char* file);
-int open_decoder(AVCodecContext* ctx, const AVCodec* codec, AVCodecParameters* params);
-int decode_frame(CodingContext* ctx, AVFrame* frame, AVPacket* packet);
+    PXStreamContext* stream_ctx_vec;
+} PXMediaContext;
 
-int open_output(AVFormatContext* input, CodingContext* output, const char* file);
-int open_encoder(CodingContext* ctx, char* encoder_name, AVDictionary** codec_options,
-                 AVRational timebase, AVCodecParameters* input_params);
+// int open_input(CodingContext* ctx, const char* file);
+// int open_decoder(AVCodecContext* ctx, const AVCodec* codec, AVCodecParameters* params);
+// int decode_frame(CodingContext* ctx, AVFrame* frame, AVPacket* packet);
 
-int close_output_file(AVFormatContext* format);
-void close_coding_context(CodingContext* ctx);
+// int open_output(AVFormatContext* input, CodingContext* output, const char* file);
+// int open_encoder(CodingContext* ctx, char* encoder_name, AVDictionary** codec_options,
+//                  AVRational timebase, AVCodecParameters* input_params);
 
-void print_av_error(int error);
+// int close_output_file(AVFormatContext* format);
+// void close_coding_context(CodingContext* ctx);
