@@ -13,11 +13,32 @@ int init_px_mediactx(PXMediaContext* ctx) {
     if (!ctx->stream_ctx_vec->dec_frame)
         return AVERROR(ENOMEM);
 
-    ctx->stream_ctx_vec->pkt = av_packet_alloc();
-    if (!ctx->stream_ctx_vec->pkt)
+    ctx->stream_ctx_vec->enc_pkt = av_packet_alloc();
+    if (!ctx->stream_ctx_vec->enc_pkt)
         return AVERROR(ENOMEM);
 
     return 0;
+}
+
+void uninit_px_mediactx(PXMediaContext* ctx) {
+
+    avformat_free_context(ctx->ifmt_ctx);
+    avformat_free_context(ctx->ofmt_ctx);
+
+    for (int i = 0; i < ctx->ifmt_ctx->nb_streams; i++) {
+        avcodec_free_context(&ctx->stream_ctx_vec[i].dec_ctx);
+        avcodec_free_context(&ctx->stream_ctx_vec[i].enc_ctx);
+        av_frame_free(&ctx->stream_ctx_vec[i].dec_frame);
+        av_packet_free(&ctx->stream_ctx_vec[i].enc_pkt);
+    }
+
+    av_freep(ctx->stream_ctx_vec);
+
+    avformat_close_input(&ctx->ifmt_ctx);
+
+    if (!(ctx->ofmt_ctx->oformat->flags & AVFMT_NOFILE))
+        avio_closep(&ctx->ofmt_ctx->pb);
+    avformat_free_context(ctx->ofmt_ctx);
 }
 
 int open_input(CodingContext* ctx, const char* filename) {

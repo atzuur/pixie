@@ -8,7 +8,7 @@ typedef struct PXStreamContext {
     AVCodecContext* enc_ctx;
 
     AVFrame* dec_frame;
-    AVPacket* pkt;
+    AVPacket* enc_pkt;
 } PXStreamContext;
 
 typedef struct PXMediaContext {
