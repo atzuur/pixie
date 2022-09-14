@@ -1,9 +1,4 @@
 #include "incl/coding.h"
-#include <libavcodec/avcodec.h>
-#include <libavcodec/codec_par.h>
-#include <libavutil/avutil.h>
-#include <libavutil/error.h>
-#include <libavutil/frame.h>
 
 void uninit_px_mediactx(PXMediaContext* ctx) {
 
@@ -139,9 +134,10 @@ int decode_frame(PXStreamContext* ctx, AVFrame* frame, AVPacket* packet) {
 }
 
 int init_output(PXMediaContext* ctx, const char* filename, const char* enc_name,
-                AVDictionary** enc_opts) {
+                AVDictionary** enc_opts_v, AVDictionary** enc_opts_a) {
 
     int ret;
+    ctx->ofmt_ctx = NULL;
 
     if ((ret = avformat_alloc_output_context2(&ctx->ofmt_ctx, NULL, NULL, filename)) < 0) {
         av_log(NULL, AV_LOG_ERROR, "Failed to allocate output context\n");
@@ -151,16 +147,18 @@ int init_output(PXMediaContext* ctx, const char* filename, const char* enc_name,
     // copy input streams to output and open encoders
     for (int i = 0; i < ctx->ifmt_ctx->nb_streams; i++) {
 
+        // clang-format off
         AVStream* ostream = avformat_new_stream(ctx->ofmt_ctx, NULL);
         if (!ostream) {
             av_log(NULL, AV_LOG_ERROR, "Failed to add output stream\n");
             return AVERROR_UNKNOWN;
         }
 
-        if (ctx->stream_ctx_vec[i].dec_ctx->codec_type == AVMEDIA_TYPE_VIDEO ||
-            ctx->stream_ctx_vec[i].dec_ctx->codec_type == AVMEDIA_TYPE_AUDIO) {
+        #define stream_is(type) ctx->stream_ctx_vec[i].dec_ctx->codec_type == AVMEDIA_TYPE_##type
 
-            ret = init_encoder(ctx, enc_name, enc_opts, i, ostream);
+        if (stream_is(VIDEO) || stream_is(AUDIO)) {
+
+            ret = init_encoder(ctx, enc_name, stream_is(VIDEO) ? enc_opts_v : enc_opts_a, i, ostream);
             if (ret < 0) {
                 av_log(NULL, AV_LOG_ERROR, "Failed to initialize encoder for stream %d\n", i);
                 return ret;
@@ -174,6 +172,7 @@ int init_output(PXMediaContext* ctx, const char* filename, const char* enc_name,
             }
             ostream->time_base = ctx->ifmt_ctx->streams[i]->time_base;
         }
+        // clang-format on
     }
 
     av_dump_format(ctx->ofmt_ctx, 0, filename, 1);
@@ -212,6 +211,7 @@ int init_encoder(PXMediaContext* ctx, const char* enc_name, AVDictionary** enc_o
     }
 
     if (dec_ctx->codec_type == AVMEDIA_TYPE_VIDEO) {
+
         enc_ctx->time_base = av_inv_q(dec_ctx->framerate);
         enc_ctx->width = dec_ctx->width;
         enc_ctx->height = dec_ctx->height;

@@ -59,7 +59,7 @@ int main(int argc, char** argv) {
     if ((ret = init_input(ctx, argv[1])) < 0)
         goto end;
 
-    if ((ret = init_output(ctx, argv[2], enc_name, &enc_opts_dict)) < 0)
+    if ((ret = init_output(ctx, argv[2], enc_name, &enc_opts_dict, NULL)) < 0)
         goto end;
 
     AVStream* ist; // current input stream
