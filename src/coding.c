@@ -1,21 +1,9 @@
 #include "incl/coding.h"
+#include <libavcodec/avcodec.h>
+#include <libavcodec/codec_par.h>
 #include <libavutil/avutil.h>
-
-int init_px_mediactx(PXMediaContext* ctx) {
-
-    ctx->ifmt_ctx = NULL;
-    ctx->ofmt_ctx = NULL;
-
-    ctx->stream_ctx_vec->dec_frame = av_frame_alloc();
-    if (!ctx->stream_ctx_vec->dec_frame)
-        return AVERROR(ENOMEM);
-
-    ctx->stream_ctx_vec->enc_pkt = av_packet_alloc();
-    if (!ctx->stream_ctx_vec->enc_pkt)
-        return AVERROR(ENOMEM);
-
-    return 0;
-}
+#include <libavutil/error.h>
+#include <libavutil/frame.h>
 
 void uninit_px_mediactx(PXMediaContext* ctx) {
 
@@ -46,6 +34,8 @@ int init_input(PXMediaContext* ctx, const char* filename) {
     int ret;
     int i;
 
+    ctx->ifmt_ctx = NULL;
+
     if ((ret = avformat_open_input(&ctx->ifmt_ctx, filename, NULL, NULL)) < 0) {
         av_log(NULL, AV_LOG_ERROR, "Cannot open input file '%s'\n", filename);
         return ret;
@@ -60,6 +50,14 @@ int init_input(PXMediaContext* ctx, const char* filename) {
     if (!ctx->stream_ctx_vec)
         return AVERROR(ENOMEM);
 
+    ctx->stream_ctx_vec->dec_frame = av_frame_alloc();
+    if (!ctx->stream_ctx_vec->dec_frame)
+        return AVERROR(ENOMEM);
+
+    ctx->stream_ctx_vec->enc_pkt = av_packet_alloc();
+    if (!ctx->stream_ctx_vec->enc_pkt)
+        return AVERROR(ENOMEM);
+
     const AVCodec* decoder = NULL;
 
     for (i = 0; i < ctx->ifmt_ctx->nb_streams; i++) {
@@ -67,23 +65,18 @@ int init_input(PXMediaContext* ctx, const char* filename) {
         int stream_type = ctx->ifmt_ctx->streams[i]->codecpar->codec_type;
 
         if (stream_type == AVMEDIA_TYPE_UNKNOWN) {
-            av_log(NULL, AV_LOG_WARNING, "Stream %d is of unknown type, ignoring\n", i);
-            continue;
+            av_log(NULL, AV_LOG_WARNING, "Stream %d is of unknown type, cannot proceed\n", i);
+            return AVERROR_INVALIDDATA;
         }
 
         if (stream_type == AVMEDIA_TYPE_VIDEO || stream_type == AVMEDIA_TYPE_AUDIO) {
 
-            decoder = avcodec_find_decoder(ctx->ifmt_ctx->streams[i]->codecpar->codec_id);
-            if (!decoder) {
-                av_log(NULL, AV_LOG_ERROR, "Failed to find decoder for stream %d\n", i);
-                return AVERROR_DECODER_NOT_FOUND;
-            }
-
-            if ((ret = init_decoder(ctx->stream_ctx_vec[i].dec_ctx, decoder,
-                                    ctx->ifmt_ctx->streams[i]->codecpar)) < 0) {
+            if ((ret = init_decoder(ctx, i)) < 0) {
                 av_log(NULL, AV_LOG_ERROR, "Failed to initialize decoder for stream %d\n", i);
                 return ret;
             }
+            ctx->stream_ctx_vec[i].dec_ctx->framerate =
+                av_guess_frame_rate(ctx->ifmt_ctx, ctx->ifmt_ctx->streams[i], NULL);
         }
     }
 
@@ -92,28 +85,35 @@ int init_input(PXMediaContext* ctx, const char* filename) {
     return 0;
 }
 
-int init_decoder(AVCodecContext* dec_ctx, const AVCodec* dec, AVCodecParameters* params) {
+int init_decoder(PXMediaContext* ctx, const unsigned int stream_idx) {
 
     int ret;
+    const AVCodecParameters* dec_params = ctx->ifmt_ctx->streams[stream_idx]->codecpar;
 
-    dec_ctx = avcodec_alloc_context3(dec);
+    const AVCodec* decoder =
+        avcodec_find_decoder(ctx->ifmt_ctx->streams[stream_idx]->codecpar->codec_id);
+    if (!decoder) {
+        av_log(NULL, AV_LOG_ERROR, "Failed to find decoder for stream %d\n", stream_idx);
+        return AVERROR_DECODER_NOT_FOUND;
+    }
+
+    AVCodecContext* dec_ctx = avcodec_alloc_context3(decoder);
     if (!dec_ctx) {
         av_log(NULL, AV_LOG_ERROR, "Failed to allocate decoder context\n");
         return AVERROR(ENOMEM);
     }
 
-    if (params) {
-        if ((ret = avcodec_parameters_to_context(dec_ctx, params)) < 0) {
-            av_log(NULL, AV_LOG_ERROR,
-                   "Failed to copy decoder parameters to input decoder context\n");
-            return ret;
-        }
+    if ((ret = avcodec_parameters_to_context(dec_ctx, dec_params)) < 0) {
+        av_log(NULL, AV_LOG_ERROR, "Failed to copy decoder parameters to input decoder context\n");
+        return ret;
     }
 
-    if ((ret = avcodec_open2(dec_ctx, dec, NULL)) < 0) {
+    if ((ret = avcodec_open2(dec_ctx, decoder, NULL)) < 0) {
         // no message here as it'd just be a duplicate
         return ret;
     }
+
+    ctx->stream_ctx_vec[stream_idx].dec_ctx = dec_ctx;
 
     return 0;
 }
@@ -138,7 +138,7 @@ int decode_frame(PXStreamContext* ctx, AVFrame* frame, AVPacket* packet) {
     return 0;
 }
 
-int init_output(PXMediaContext* ctx, const char* filename, char* encoder_name,
+int init_output(PXMediaContext* ctx, const char* filename, const char* enc_name,
                 AVDictionary** enc_opts) {
 
     int ret;
@@ -150,29 +150,29 @@ int init_output(PXMediaContext* ctx, const char* filename, char* encoder_name,
 
     // copy input streams to output and open encoders
     for (int i = 0; i < ctx->ifmt_ctx->nb_streams; i++) {
+
         AVStream* ostream = avformat_new_stream(ctx->ofmt_ctx, NULL);
         if (!ostream) {
             av_log(NULL, AV_LOG_ERROR, "Failed to add output stream\n");
             return AVERROR_UNKNOWN;
         }
 
-        if ((ret = avcodec_parameters_copy(ostream->codecpar,
-                                           ctx->ifmt_ctx->streams[i]->codecpar)) < 0) {
-            av_log(NULL, AV_LOG_ERROR, "Failed to copy codec parameters to output stream\n");
-            return ret;
-        }
+        if (ctx->stream_ctx_vec[i].dec_ctx->codec_type == AVMEDIA_TYPE_VIDEO ||
+            ctx->stream_ctx_vec[i].dec_ctx->codec_type == AVMEDIA_TYPE_AUDIO) {
 
-        if (ctx->ifmt_ctx->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_VIDEO ||
-            ctx->ifmt_ctx->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_AUDIO) {
-
-            ret = init_encoder(ctx, encoder_name, enc_opts, ctx->ifmt_ctx->streams[i]->time_base,
-                               ctx->ifmt_ctx->streams[i]->codecpar, i);
+            ret = init_encoder(ctx, enc_name, enc_opts, i, ostream);
             if (ret < 0) {
                 av_log(NULL, AV_LOG_ERROR, "Failed to initialize encoder for stream %d\n", i);
                 return ret;
             }
 
-            ostream->time_base = ctx->stream_ctx_vec[i].enc_ctx->time_base;
+        } else {
+            ret = avcodec_parameters_copy(ostream->codecpar, ctx->ifmt_ctx->streams[i]->codecpar);
+            if (ret < 0) {
+                av_log(NULL, AV_LOG_ERROR, "Failed to copy codec parameters to output stream\n");
+                return ret;
+            }
+            ostream->time_base = ctx->ifmt_ctx->streams[i]->time_base;
         }
     }
 
@@ -195,29 +195,52 @@ int init_output(PXMediaContext* ctx, const char* filename, char* encoder_name,
     return 0;
 }
 
-int init_encoder(PXMediaContext* ctx, char* encoder_name, AVDictionary** enc_opts,
-                 AVRational timebase, AVCodecParameters* input_params, int stream_idx) {
+int init_encoder(PXMediaContext* ctx, const char* enc_name, AVDictionary** enc_opts,
+                 const unsigned int stream_idx, AVStream* out_stream) {
     int ret;
 
-    const AVCodec* encoder = avcodec_find_encoder_by_name(encoder_name);
-    if (!encoder) // use default
-        encoder = avcodec_find_encoder_by_name("libx264");
+    const AVCodecContext* dec_ctx = ctx->stream_ctx_vec[stream_idx].dec_ctx;
 
+    const AVCodec* encoder = avcodec_find_encoder_by_name(enc_name);
+    if (!encoder) // use default
+        encoder = avcodec_find_encoder_by_name(dec_ctx->codec_type == AVMEDIA_TYPE_VIDEO ? "libx264"
+                                                                                         : "aac");
     AVCodecContext* enc_ctx = avcodec_alloc_context3(encoder);
     if (!enc_ctx) {
         av_log(NULL, AV_LOG_ERROR, "Failed to allocate encoder context\n");
         return AVERROR(ENOMEM);
     }
 
-    enc_ctx->profile = FF_PROFILE_UNKNOWN;
-    enc_ctx->time_base = timebase;
-    enc_ctx->width = input_params->width;
-    enc_ctx->height = input_params->height;
-    enc_ctx->sample_aspect_ratio = input_params->sample_aspect_ratio;
-    enc_ctx->pix_fmt = input_params->format;
+    if (dec_ctx->codec_type == AVMEDIA_TYPE_VIDEO) {
+        enc_ctx->time_base = av_inv_q(dec_ctx->framerate);
+        enc_ctx->width = dec_ctx->width;
+        enc_ctx->height = dec_ctx->height;
+        enc_ctx->sample_aspect_ratio = dec_ctx->sample_aspect_ratio;
+        enc_ctx->pix_fmt = dec_ctx->pix_fmt;
+
+    } else {
+        enc_ctx->sample_rate = dec_ctx->sample_rate;
+        ret = av_channel_layout_copy(&enc_ctx->ch_layout, &dec_ctx->ch_layout);
+        if (ret < 0) {
+            av_log(NULL, AV_LOG_ERROR, "Failed to copy channel layout for stream %d\n", stream_idx);
+            return ret;
+        }
+        enc_ctx->sample_fmt = dec_ctx->sample_fmt;
+        enc_ctx->time_base = (AVRational) {1, enc_ctx->sample_rate};
+    }
 
     if (ctx->ofmt_ctx->oformat->flags & AVFMT_GLOBALHEADER)
         enc_ctx->flags |= AVFMT_GLOBALHEADER;
+
+    ret = avcodec_parameters_from_context(out_stream->codecpar, enc_ctx);
+    if (ret < 0) {
+        av_log(NULL, AV_LOG_ERROR, "Failed to copy encoder parameters to output stream #%u\n",
+               stream_idx);
+        return ret;
+    }
+
+    av_log(NULL, AV_LOG_INFO, "Opening encoder for stream %d, timebase: %d/%d\n", stream_idx,
+           enc_ctx->time_base.num, enc_ctx->time_base.den);
 
     if ((ret = avcodec_open2(enc_ctx, encoder, enc_opts)) < 0) {
         av_log(NULL, AV_LOG_ERROR, "Failed to open encoder\n");
@@ -250,6 +273,8 @@ int encode_frame(PXMediaContext* ctx, AVFrame* frame, AVPacket* packet, unsigned
 
         ret = av_interleaved_write_frame(ctx->ofmt_ctx, packet);
     }
+
+    av_frame_unref(frame);
 
     return ret;
 }
