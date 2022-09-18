@@ -1,8 +1,85 @@
 #include "incl/coding.h"
-#include <libavformat/avformat.h>
+#include "incl/pixie.h"
+
+void px_print_info(char* prog_name, char full) {
+
+    printf("pixie v%s, using FFmpeg version %s\n"
+           "Usage: %s -i <input file(s)> [options] -o <output file/folder>\n",
+           PX_VERSION, av_version_info(), prog_name);
+
+    if (full) {
+        puts("Options:\n"
+             "  -i <input(s)>  Input file(s), separated by space\n"
+             "  -o <output>    Output file, treated as a folder if inputs > 1\n"
+             "  -v <encoder>   Video encoder name\n"
+             "  -a <encoder>   Audio encoder name\n"
+             "  -t <threads>   Number of threads to use for filtering\n"
+             "  -h             Print this help message\n");
+    }
+}
+
+int px_parse_args(int argc, char** argv, PXSettings* s) {
+
+    int i;
+
+    if (argc < 2) {
+        px_print_info(argv[0], 0);
+        return 1;
+    }
+
+    // clang-format off
+
+    #define if_arg_is(arg, code)                                          \
+        case arg: {                                                       \
+            if (argc < i + 1) {                                           \
+                av_log(NULL, AV_LOG_ERROR, "Missing value for -%c", arg); \
+                return 1;                                                 \
+            }                                                             \
+            code;                                                         \
+            break;                                                        \
+            continue;                                                     \
+        }
+
+    // clang-format on
+    for (i = 1; i < argc; i++) {
+
+        if (argv[i][0] == '-')
+            switch (argv[i][1]) {
+
+                if_arg_is('i', {
+                    s->input_files = &argv[i + 1];
+                    while (argv[i + 1][0] != '-' && argc >= i + 1) {
+                        s->n_input_files++;
+                        i++;
+                    }
+                });
+
+                if_arg_is('v', {
+                    s->enc_name_v = argv[i + 1];
+                    i++;
+                });
+
+                if_arg_is('a', {
+                    s->enc_name_a = argv[i + 1];
+                    i++;
+                });
+
+                if_arg_is('t', {
+                    s->n_threads = atoi(argv[i + 1]);
+                    i++;
+                });
+
+                if_arg_is('o', {
+                    s->output_file = argv[i + 1];
+                    i++;
+                });
+            }
+    }
+
+    return 0;
+}
 
 int main(int argc, char** argv) {
-
     int ret;
     int i;
 
@@ -18,9 +95,9 @@ int main(int argc, char** argv) {
     AVDictionary* enc_opts_dict = NULL;
 
     if (argc > 3) {
-        if (argv[3][0] == '-' && argv[3][1] == 'e') {
+        if (argv[3][0] == '-' && argv[3][1] == 'v') {
 
-            av_log(NULL, AV_LOG_INFO, "Parsing encoding settings\n");
+            av_log(NULL, AV_LOG_INFO, "Parsing video encoding settings\n");
 
             if (argc < 5) {
                 av_log(NULL, AV_LOG_ERROR, "No encoder provided\n");
@@ -34,8 +111,6 @@ int main(int argc, char** argv) {
                     av_log(NULL, AV_LOG_ERROR, "Failed to parse encoding options\n");
                     goto end;
                 }
-                av_log(NULL, AV_LOG_INFO, "Encoding settings %s parsed and set to dict at %p\n",
-                       enc_opts, enc_opts_dict);
             }
 
         } else {
@@ -91,16 +166,17 @@ int main(int argc, char** argv) {
                 goto end;
             }
 
+            av_packet_unref(stc->enc_pkt);
+
         } else {
             // remux this frame without reencoding
-            av_packet_rescale_ts(stc->enc_pkt, ist->time_base, ost->time_base);
-            ret = av_interleaved_write_frame(ctx->ofmt_ctx, stc->enc_pkt);
+            av_packet_rescale_ts(dec_pkt, ist->time_base, ost->time_base);
+            ret = av_interleaved_write_frame(ctx->ofmt_ctx, dec_pkt);
             if (ret < 0)
                 goto end;
         }
 
         av_packet_unref(dec_pkt);
-        av_packet_unref(stc->enc_pkt);
     }
 
     for (int i = 0; i < ctx->ifmt_ctx->nb_streams; i++) {
