@@ -1,5 +1,7 @@
 #include "incl/coding.h"
 #include "incl/pixie.h"
+#include <ctype.h> // isalpha
+#include <string.h>
 
 void px_print_info(char* prog_name, char full) {
 
@@ -29,51 +31,59 @@ int px_parse_args(int argc, char** argv, PXSettings* s) {
 
     // clang-format off
 
-    #define if_arg_is(arg, code)                                          \
-        case arg: {                                                       \
-            if (argc < i + 1) {                                           \
-                av_log(NULL, AV_LOG_ERROR, "Missing value for -%c", arg); \
-                return 1;                                                 \
-            }                                                             \
-            code;                                                         \
-            break;                                                        \
-            continue;                                                     \
+    #define if_arg_is(arg, code)                                                                    \
+        if (strcmp(argv[i], arg) == 0) {                                                            \
+            if (argc < i + 1 || /* if argv[i] is the last arg or the next element is also an arg */ \
+                (argc >= i + 1 && argv[i + 1][0] == '-' && !isalpha(argv[i + 1][1]))) {             \
+                av_log(NULL, AV_LOG_ERROR, "Missing value for %s", argv[i]);                        \
+                return 1;                                                                           \
+            }                                                                                       \
+            code;                                                                                   \
+            continue;                                                                               \
         }
 
     // clang-format on
     for (i = 1; i < argc; i++) {
 
-        if (argv[i][0] == '-')
-            switch (argv[i][1]) {
-
-                if_arg_is('i', {
-                    s->input_files = &argv[i + 1];
-                    while (argv[i + 1][0] != '-' && argc >= i + 1) {
-                        s->n_input_files++;
-                        i++;
-                    }
-                });
-
-                if_arg_is('v', {
-                    s->enc_name_v = argv[i + 1];
-                    i++;
-                });
-
-                if_arg_is('a', {
-                    s->enc_name_a = argv[i + 1];
-                    i++;
-                });
-
-                if_arg_is('t', {
-                    s->n_threads = atoi(argv[i + 1]);
-                    i++;
-                });
-
-                if_arg_is('o', {
-                    s->output_file = argv[i + 1];
-                    i++;
-                });
+        if_arg_is("-i", {
+            s->input_files = &argv[i + 1];
+            while (argv[i + 1][0] != '-' && argc >= i + 1) {
+                s->n_input_files++;
+                i++;
             }
+        });
+
+        if_arg_is("-v", {
+            s->enc_name_v = argv[i + 1];
+            i++;
+        });
+
+        if_arg_is("-a", {
+            s->enc_name_a = argv[i + 1];
+            i++;
+        });
+
+        if_arg_is("-t", {
+            s->n_threads = atoi(argv[i + 1]);
+            i++;
+        });
+
+        if_arg_is("-o", {
+            s->output_file = argv[i + 1];
+            i++;
+        });
+
+        if (strcmp(argv[i], "-h") == 0) {
+            px_print_info(argv[0], 1);
+            break;
+        }
+
+        if (strcmp(argv[i], "-version") == 0) {
+            px_print_info(argv[0], 0);
+            break;
+        }
+
+        av_log(NULL, AV_LOG_ERROR, "Unknown option: %s", argv[i]);
     }
 
     return 0;
@@ -125,7 +135,7 @@ int main(int argc, char** argv) {
         goto end;
     }
 
-    PXMediaContext* ctx = av_mallocz(sizeof(*ctx));
+    PXMediaContext* ctx = {0};
     if (!ctx) {
         av_log(NULL, AV_LOG_ERROR, "Failed to allocate media context\n");
         goto end;
@@ -190,10 +200,8 @@ int main(int argc, char** argv) {
     av_write_trailer(ctx->ofmt_ctx);
 
 end:
-    if (ctx) {
+    if (ctx)
         uninit_px_mediactx(ctx);
-        av_freep(ctx);
-    }
 
     if (enc_opts_dict)
         av_dict_free(&enc_opts_dict);
