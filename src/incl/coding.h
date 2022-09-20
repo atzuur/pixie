@@ -3,6 +3,8 @@
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
 
+#include "pixie.h"
+
 typedef struct PXStreamContext {
     AVCodecContext* dec_ctx;
     AVCodecContext* enc_ctx;
@@ -18,12 +20,10 @@ typedef struct PXMediaContext {
     PXStreamContext* stream_ctx_vec;
 } PXMediaContext;
 
-int init_px_mediactx(PXMediaContext* ctx);
 void uninit_px_mediactx(PXMediaContext* ctx);
 
 int init_input(PXMediaContext* ctx, const char* filename);
-int init_output(PXMediaContext* ctx, const char* filename, const char* enc_name,
-                AVDictionary** enc_opts_v, AVDictionary** enc_opts_a);
+int init_output(PXMediaContext* ctx, const char* filename, PXSettings* s);
 
 int init_decoder(PXMediaContext* ctx, const unsigned int stream_idx);
 int init_encoder(PXMediaContext* ctx, const char* enc_name, AVDictionary** enc_opts,

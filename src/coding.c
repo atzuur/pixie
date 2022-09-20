@@ -133,12 +133,13 @@ int decode_frame(PXStreamContext* ctx, AVFrame* frame, AVPacket* packet) {
     return 0;
 }
 
-int init_output(PXMediaContext* ctx, const char* filename, const char* enc_name,
-                AVDictionary** enc_opts_v, AVDictionary** enc_opts_a) {
+int init_output(PXMediaContext* ctx, const char* filename, PXSettings* s) {
 
     int ret;
-    ctx->ofmt_ctx = NULL;
+    AVDictionary* enc_opts = NULL;
+    char* enc_name = NULL;
 
+    ctx->ofmt_ctx = NULL;
     if ((ret = avformat_alloc_output_context2(&ctx->ofmt_ctx, NULL, NULL, filename)) < 0) {
         av_log(NULL, AV_LOG_ERROR, "Failed to allocate output context\n");
         return AVERROR_UNKNOWN;
@@ -158,7 +159,15 @@ int init_output(PXMediaContext* ctx, const char* filename, const char* enc_name,
 
         if (stream_is(VIDEO) || stream_is(AUDIO)) {
 
-            ret = init_encoder(ctx, enc_name, stream_is(VIDEO) ? enc_opts_v : enc_opts_a, i, ostream);
+            if (stream_is(VIDEO)) {
+                enc_opts = s->enc_opts_v;
+                enc_name = s->enc_name_v;
+            } else {
+                enc_opts = s->enc_opts_a;
+                enc_name = s->enc_name_a;
+            }
+
+            ret = init_encoder(ctx, enc_name, &enc_opts, i, ostream);
             if (ret < 0) {
                 av_log(NULL, AV_LOG_ERROR, "Failed to initialize encoder for stream %d\n", i);
                 return ret;

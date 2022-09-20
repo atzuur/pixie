@@ -1,3 +1,5 @@
+#pragma once
+
 #include <libavutil/dict.h>
 
 #define PX_VERSION "0.1.0"

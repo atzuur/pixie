@@ -23,8 +23,9 @@ void px_print_info(char* prog_name, char full) {
 int px_parse_args(int argc, char** argv, PXSettings* s) {
 
     int i;
+    int ret = 0;
 
-    if (argc < 2) {
+    if (argc < 1) {
         px_print_info(argv[0], 0);
         return 1;
     }
@@ -34,7 +35,7 @@ int px_parse_args(int argc, char** argv, PXSettings* s) {
     #define if_arg_is(arg, code)                                                                    \
         if (strcmp(argv[i], arg) == 0) {                                                            \
             if (argc < i + 1 || /* if argv[i] is the last arg or the next element is also an arg */ \
-                (argc >= i + 1 && argv[i + 1][0] == '-' && !isalpha(argv[i + 1][1]))) {             \
+                (argc >= i + 1 && argv[i + 1][0] == '-' && isalpha(argv[i + 1][1]))) {              \
                 av_log(NULL, AV_LOG_ERROR, "Missing value for %s", argv[i]);                        \
                 return 1;                                                                           \
             }                                                                                       \
@@ -54,12 +55,28 @@ int px_parse_args(int argc, char** argv, PXSettings* s) {
         });
 
         if_arg_is("-v", {
-            s->enc_name_v = argv[i + 1];
+            s->enc_name_v = strtok(argv[i + 1], ":");
+            char* enc_opts = strtok(NULL, ":");
+            if (enc_opts) {
+                ret = av_dict_parse_string(&s->enc_opts_v, enc_opts, "=", ",", 0);
+                if (ret < 0) {
+                    av_log(NULL, AV_LOG_ERROR, "Failed to parse encoding options: %s\n", enc_opts);
+                    break;
+                }
+            }
             i++;
         });
 
         if_arg_is("-a", {
-            s->enc_name_a = argv[i + 1];
+            s->enc_name_a = strtok(argv[i + 1], ":");
+            char* enc_opts = strtok(NULL, ":");
+            if (enc_opts) {
+                ret = av_dict_parse_string(&s->enc_opts_a, enc_opts, "=", ",", 0);
+                if (ret < 0) {
+                    av_log(NULL, AV_LOG_ERROR, "Failed to parse encoding options: %s\n", enc_opts);
+                    break;
+                }
+            }
             i++;
         });
 
@@ -86,48 +103,19 @@ int px_parse_args(int argc, char** argv, PXSettings* s) {
         av_log(NULL, AV_LOG_ERROR, "Unknown option: %s", argv[i]);
     }
 
-    return 0;
+    return ret;
 }
 
 int main(int argc, char** argv) {
+
     int ret;
-    int i;
 
-    if (argc < 3) {
-        av_log(NULL, AV_LOG_ERROR,
-               "Usage: %s <input file>"
-               " <output file> [-e <encoding settings>]\n",
-               argv[0]);
-        return 1;
-    }
+    PXSettings s = {0};
+    ret = px_parse_args(argc, argv, &s);
+    if (ret)
+        return ret;
 
-    char* enc_name = NULL;
-    AVDictionary* enc_opts_dict = NULL;
-
-    if (argc > 3) {
-        if (argv[3][0] == '-' && argv[3][1] == 'v') {
-
-            av_log(NULL, AV_LOG_INFO, "Parsing video encoding settings\n");
-
-            if (argc < 5) {
-                av_log(NULL, AV_LOG_ERROR, "No encoder provided\n");
-                goto end;
-            }
-
-            enc_name = strtok(argv[4], ":");
-            char* enc_opts = strtok(NULL, ":");
-            if (enc_opts) {
-                if ((ret = av_dict_parse_string(&enc_opts_dict, enc_opts, "=", ",", 0)) < 0) {
-                    av_log(NULL, AV_LOG_ERROR, "Failed to parse encoding options\n");
-                    goto end;
-                }
-            }
-
-        } else {
-            av_log(NULL, AV_LOG_ERROR, "Unknown option: %s\n", argv[3]);
-            goto end;
-        }
-    }
+    PXMediaContext* ctx = {0};
 
     AVPacket* dec_pkt = av_packet_alloc();
     if (!dec_pkt) {
@@ -135,82 +123,88 @@ int main(int argc, char** argv) {
         goto end;
     }
 
-    PXMediaContext* ctx = {0};
-    if (!ctx) {
-        av_log(NULL, AV_LOG_ERROR, "Failed to allocate media context\n");
-        goto end;
+    if (s.n_input_files > 1) { // /path/to/{s.output_file}/{s.output_file}
+        char* fname = strcpy(malloc(strlen(s.output_file) + 1), s.output_file);
+        s.output_file = strcat(s.output_file, strcat("/", fname));
     }
 
-    if ((ret = init_input(ctx, argv[1])) < 0)
-        goto end;
+    for (int i = 0; i < s.n_input_files; i++) {
 
-    if ((ret = init_output(ctx, argv[2], enc_name, &enc_opts_dict, NULL)) < 0)
-        goto end;
-
-    AVStream* ist; // current input stream
-    AVStream* ost; // current output stream
-    PXStreamContext* stc; // current stream context
-
-    while (1) {
-
-        if ((ret = av_read_frame(ctx->ifmt_ctx, dec_pkt)) < 0)
+        if ((ret = init_input(ctx, s.input_files[i])) < 0)
             goto end;
 
-        ist = ctx->ifmt_ctx->streams[dec_pkt->stream_index];
-        ost = ctx->ofmt_ctx->streams[dec_pkt->stream_index];
-        stc = &ctx->stream_ctx_vec[dec_pkt->stream_index];
+        if ((ret = init_output(ctx, s.output_file, NULL)) < 0)
+            goto end;
 
-        if (ist->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
+        AVStream* ist; // current input stream
+        AVStream* ost; // current output stream
+        PXStreamContext* stc; // current stream context
 
-            ret = decode_frame(stc, stc->dec_frame, dec_pkt);
-            if (ret < 0) {
-                av_log(NULL, AV_LOG_ERROR, "Failed to decode frame\n");
+        while (1) {
+
+            if ((ret = av_read_frame(ctx->ifmt_ctx, dec_pkt)) < 0)
                 goto end;
+
+            ist = ctx->ifmt_ctx->streams[dec_pkt->stream_index];
+            ost = ctx->ofmt_ctx->streams[dec_pkt->stream_index];
+            stc = &ctx->stream_ctx_vec[dec_pkt->stream_index];
+
+            if (ist->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
+
+                ret = decode_frame(stc, stc->dec_frame, dec_pkt);
+                if (ret < 0) {
+                    av_log(NULL, AV_LOG_ERROR, "Failed to decode frame\n");
+                    goto end;
+                }
+
+                stc->dec_frame->pts = stc->dec_frame->best_effort_timestamp;
+
+                ret = encode_frame(ctx, stc->dec_frame, stc->enc_pkt, dec_pkt->stream_index);
+                if (ret < 0) {
+                    av_log(NULL, AV_LOG_ERROR, "Failed to encode frame\n");
+                    goto end;
+                }
+
+                av_packet_unref(stc->enc_pkt);
+
+            } else {
+                // remux this frame without reencoding
+                av_packet_rescale_ts(dec_pkt, ist->time_base, ost->time_base);
+                ret = av_interleaved_write_frame(ctx->ofmt_ctx, dec_pkt);
+                if (ret < 0)
+                    goto end;
             }
 
-            stc->dec_frame->pts = stc->dec_frame->best_effort_timestamp;
-
-            ret = encode_frame(ctx, stc->dec_frame, stc->enc_pkt, dec_pkt->stream_index);
-            if (ret < 0) {
-                av_log(NULL, AV_LOG_ERROR, "Failed to encode frame\n");
-                goto end;
-            }
-
-            av_packet_unref(stc->enc_pkt);
-
-        } else {
-            // remux this frame without reencoding
-            av_packet_rescale_ts(dec_pkt, ist->time_base, ost->time_base);
-            ret = av_interleaved_write_frame(ctx->ofmt_ctx, dec_pkt);
-            if (ret < 0)
-                goto end;
+            av_packet_unref(dec_pkt);
         }
 
-        av_packet_unref(dec_pkt);
-    }
+        for (int j = 0; j < ctx->ifmt_ctx->nb_streams; j++) {
+            ret = flush_encoder(ctx, stc->enc_pkt, j);
+            if (ret < 0) {
+                av_log(NULL, AV_LOG_ERROR, "Failed to flush encoder\n");
+                goto end;
+            }
+        }
 
-    for (int i = 0; i < ctx->ifmt_ctx->nb_streams; i++) {
-        ret = flush_encoder(ctx, stc->enc_pkt, i);
+        av_write_trailer(ctx->ofmt_ctx);
+
+    end:
+        if (ctx)
+            uninit_px_mediactx(ctx);
+
+        if (s.enc_opts_v)
+            av_dict_free(&s.enc_opts_v);
+        if (s.enc_opts_a)
+            av_dict_free(&s.enc_opts_a);
+
+        if (dec_pkt)
+            av_packet_free(&dec_pkt);
+
         if (ret < 0) {
-            av_log(NULL, AV_LOG_ERROR, "Failed to flush encoder\n");
-            goto end;
+            av_log(NULL, AV_LOG_ERROR, "Error occurred: %s\n", av_err2str(ret));
+            break;
         }
     }
-
-    av_write_trailer(ctx->ofmt_ctx);
-
-end:
-    if (ctx)
-        uninit_px_mediactx(ctx);
-
-    if (enc_opts_dict)
-        av_dict_free(&enc_opts_dict);
-
-    if (dec_pkt)
-        av_packet_free(&dec_pkt);
-
-    if (ret < 0)
-        av_log(NULL, AV_LOG_ERROR, "Error occurred: %s\n", av_err2str(ret));
 
     return ret ? 1 : 0;
 }
