@@ -1,7 +1,6 @@
 #include "incl/coding.h"
 #include "incl/pixie.h"
 #include <ctype.h> // isalpha
-#include <string.h>
 
 void px_print_info(char* prog_name, char full) {
 
@@ -25,7 +24,7 @@ int px_parse_args(int argc, char** argv, PXSettings* s) {
     int i;
     int ret = 0;
 
-    if (argc < 1) {
+    if (argc < 2) {
         px_print_info(argv[0], 0);
         return 1;
     }
@@ -110,12 +109,12 @@ int main(int argc, char** argv) {
 
     int ret;
 
-    PXSettings s = {0};
+    PXSettings s = {.enc_opts_v = NULL, .enc_opts_a = NULL};
     ret = px_parse_args(argc, argv, &s);
     if (ret)
         return ret;
 
-    PXMediaContext* ctx = {0};
+    PXMediaContext ctx = {0};
 
     AVPacket* dec_pkt = av_packet_alloc();
     if (!dec_pkt) {
@@ -130,26 +129,29 @@ int main(int argc, char** argv) {
 
     for (int i = 0; i < s.n_input_files; i++) {
 
-        if ((ret = init_input(ctx, s.input_files[i])) < 0)
+        if ((ret = init_input(&ctx, s.input_files[i])) < 0)
             goto end;
 
-        if ((ret = init_output(ctx, s.output_file, NULL)) < 0)
+        if ((ret = init_output(&ctx, s.output_file, &s)) < 0)
             goto end;
 
         AVStream* ist; // current input stream
         AVStream* ost; // current output stream
         PXStreamContext* stc; // current stream context
 
+        long int frames_done = 0;
+
         while (1) {
 
-            if ((ret = av_read_frame(ctx->ifmt_ctx, dec_pkt)) < 0)
+            if ((ret = av_read_frame(ctx.ifmt_ctx, dec_pkt)) < 0)
                 goto end;
 
-            ist = ctx->ifmt_ctx->streams[dec_pkt->stream_index];
-            ost = ctx->ofmt_ctx->streams[dec_pkt->stream_index];
-            stc = &ctx->stream_ctx_vec[dec_pkt->stream_index];
+            ist = ctx.ifmt_ctx->streams[dec_pkt->stream_index];
+            ost = ctx.ofmt_ctx->streams[dec_pkt->stream_index];
+            stc = &ctx.stream_ctx_vec[dec_pkt->stream_index];
 
-            if (ist->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
+            if (ist->codecpar->codec_type == AVMEDIA_TYPE_VIDEO ||
+                ist->codecpar->codec_type == AVMEDIA_TYPE_AUDIO) {
 
                 ret = decode_frame(stc, stc->dec_frame, dec_pkt);
                 if (ret < 0) {
@@ -159,7 +161,7 @@ int main(int argc, char** argv) {
 
                 stc->dec_frame->pts = stc->dec_frame->best_effort_timestamp;
 
-                ret = encode_frame(ctx, stc->dec_frame, stc->enc_pkt, dec_pkt->stream_index);
+                ret = encode_frame(&ctx, stc->dec_frame, stc->enc_pkt, dec_pkt->stream_index);
                 if (ret < 0) {
                     av_log(NULL, AV_LOG_ERROR, "Failed to encode frame\n");
                     goto end;
@@ -170,35 +172,35 @@ int main(int argc, char** argv) {
             } else {
                 // remux this frame without reencoding
                 av_packet_rescale_ts(dec_pkt, ist->time_base, ost->time_base);
-                ret = av_interleaved_write_frame(ctx->ofmt_ctx, dec_pkt);
+                ret = av_interleaved_write_frame(ctx.ofmt_ctx, dec_pkt);
                 if (ret < 0)
                     goto end;
             }
 
             av_packet_unref(dec_pkt);
+            frames_done++;
+            printf("\rProgress: %ld/%ld (%f%%)", frames_done, ist->nb_frames,
+                   (float)frames_done / ist->nb_frames * 100);
         }
 
-        for (int j = 0; j < ctx->ifmt_ctx->nb_streams; j++) {
-            ret = flush_encoder(ctx, stc->enc_pkt, j);
+        for (int j = 0; j < ctx.ifmt_ctx->nb_streams; j++) {
+            ret = flush_encoder(&ctx, stc->enc_pkt, j);
             if (ret < 0) {
                 av_log(NULL, AV_LOG_ERROR, "Failed to flush encoder\n");
                 goto end;
             }
         }
 
-        av_write_trailer(ctx->ofmt_ctx);
+        av_write_trailer(ctx.ofmt_ctx);
 
     end:
-        if (ctx)
-            uninit_px_mediactx(ctx);
-
-        if (s.enc_opts_v)
-            av_dict_free(&s.enc_opts_v);
-        if (s.enc_opts_a)
-            av_dict_free(&s.enc_opts_a);
+        uninit_px_mediactx(&ctx);
 
         if (dec_pkt)
             av_packet_free(&dec_pkt);
+
+        if (ret == AVERROR_EOF)
+            ret = 0;
 
         if (ret < 0) {
             av_log(NULL, AV_LOG_ERROR, "Error occurred: %s\n", av_err2str(ret));

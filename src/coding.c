@@ -8,12 +8,12 @@ void uninit_px_mediactx(PXMediaContext* ctx) {
             avcodec_free_context(&ctx->stream_ctx_vec[i].dec_ctx);
         if (ctx->stream_ctx_vec[i].enc_ctx)
             avcodec_free_context(&ctx->stream_ctx_vec[i].enc_ctx);
-
-        if (ctx->stream_ctx_vec[i].dec_frame)
-            av_frame_free(&ctx->stream_ctx_vec[i].dec_frame);
-        if (ctx->stream_ctx_vec[i].enc_pkt)
-            av_packet_free(&ctx->stream_ctx_vec[i].enc_pkt);
     }
+
+    if (ctx->stream_ctx_vec->dec_frame)
+        av_frame_free(&ctx->stream_ctx_vec->dec_frame);
+    if (ctx->stream_ctx_vec->enc_pkt)
+        av_packet_free(&ctx->stream_ctx_vec->enc_pkt);
 
     av_freep(ctx->stream_ctx_vec);
 
@@ -41,7 +41,7 @@ int init_input(PXMediaContext* ctx, const char* filename) {
         return ret;
     }
 
-    ctx->stream_ctx_vec = av_calloc(ctx->ifmt_ctx->nb_streams, sizeof(*ctx->stream_ctx_vec));
+    ctx->stream_ctx_vec = av_calloc(ctx->ifmt_ctx->nb_streams, sizeof *ctx->stream_ctx_vec);
     if (!ctx->stream_ctx_vec)
         return AVERROR(ENOMEM);
 
@@ -133,7 +133,7 @@ int decode_frame(PXStreamContext* ctx, AVFrame* frame, AVPacket* packet) {
     return 0;
 }
 
-int init_output(PXMediaContext* ctx, const char* filename, PXSettings* s) {
+int init_output(PXMediaContext* ctx, const char* filename, const PXSettings* s) {
 
     int ret;
     AVDictionary* enc_opts = NULL;
