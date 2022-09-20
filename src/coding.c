@@ -45,14 +45,6 @@ int init_input(PXMediaContext* ctx, const char* filename) {
     if (!ctx->stream_ctx_vec)
         return AVERROR(ENOMEM);
 
-    ctx->stream_ctx_vec->dec_frame = av_frame_alloc();
-    if (!ctx->stream_ctx_vec->dec_frame)
-        return AVERROR(ENOMEM);
-
-    ctx->stream_ctx_vec->enc_pkt = av_packet_alloc();
-    if (!ctx->stream_ctx_vec->enc_pkt)
-        return AVERROR(ENOMEM);
-
     const AVCodec* decoder = NULL;
 
     for (i = 0; i < ctx->ifmt_ctx->nb_streams; i++) {
@@ -72,6 +64,14 @@ int init_input(PXMediaContext* ctx, const char* filename) {
             }
             ctx->stream_ctx_vec[i].dec_ctx->framerate =
                 av_guess_frame_rate(ctx->ifmt_ctx, ctx->ifmt_ctx->streams[i], NULL);
+
+            ctx->stream_ctx_vec[i].dec_frame = av_frame_alloc();
+            if (!ctx->stream_ctx_vec[i].dec_frame)
+                return AVERROR(ENOMEM);
+
+            ctx->stream_ctx_vec[i].enc_pkt = av_packet_alloc();
+            if (!ctx->stream_ctx_vec[i].enc_pkt)
+                return AVERROR(ENOMEM);
         }
     }
 
@@ -126,7 +126,6 @@ int decode_frame(PXStreamContext* ctx, AVFrame* frame, AVPacket* packet) {
     if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
         return 0;
     } else if (ret < 0) {
-        av_log(NULL, AV_LOG_ERROR, "Failed to decode frame\n");
         return ret;
     }
 
@@ -264,17 +263,15 @@ int init_encoder(PXMediaContext* ctx, const char* enc_name, AVDictionary** enc_o
 int encode_frame(PXMediaContext* ctx, AVFrame* frame, AVPacket* packet, unsigned int stream_idx) {
 
     int ret;
-    av_packet_unref(packet);
+    frame->pts = frame->best_effort_timestamp;
 
     ret = avcodec_send_frame(ctx->stream_ctx_vec[stream_idx].enc_ctx, frame);
     if (ret < 0)
         return ret;
 
     while (ret >= 0) {
-        ret = avcodec_receive_packet(ctx->stream_ctx_vec[stream_idx].enc_ctx, packet);
 
-        if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF)
-            return 0;
+        ret = avcodec_receive_packet(ctx->stream_ctx_vec[stream_idx].enc_ctx, packet);
 
         packet->stream_index = stream_idx;
         av_packet_rescale_ts(packet, ctx->stream_ctx_vec[stream_idx].enc_ctx->time_base,

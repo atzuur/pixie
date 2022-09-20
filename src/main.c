@@ -1,6 +1,8 @@
 #include "incl/coding.h"
 #include "incl/pixie.h"
 #include <ctype.h> // isalpha
+#include <libavformat/avformat.h>
+#include <libavutil/avutil.h>
 
 void px_print_info(char* prog_name, char full) {
 
@@ -123,7 +125,8 @@ int main(int argc, char** argv) {
     }
 
     if (s.n_input_files > 1) { // /path/to/{s.output_file}/{s.output_file}
-        char* fname = strcpy(malloc(strlen(s.output_file) + 1), s.output_file);
+        char fname[strlen(s.output_file) + 1];
+        strcpy(fname, s.output_file);
         s.output_file = strcat(s.output_file, strcat("/", fname));
     }
 
@@ -159,11 +162,10 @@ int main(int argc, char** argv) {
                     goto end;
                 }
 
-                stc->dec_frame->pts = stc->dec_frame->best_effort_timestamp;
-
                 ret = encode_frame(&ctx, stc->dec_frame, stc->enc_pkt, dec_pkt->stream_index);
                 if (ret < 0) {
-                    av_log(NULL, AV_LOG_ERROR, "Failed to encode frame\n");
+                    if (ret != AVERROR_EOF)
+                        av_log(NULL, AV_LOG_ERROR, "Failed to encode frame\n");
                     goto end;
                 }
 
@@ -178,10 +180,18 @@ int main(int argc, char** argv) {
             }
 
             av_packet_unref(dec_pkt);
+
             frames_done++;
-            printf("\rProgress: %ld/%ld (%f%%)", frames_done, ist->nb_frames,
-                   (float)frames_done / ist->nb_frames * 100);
+            long int total_frames = ist->nb_frames
+                                        ? ist->nb_frames
+                                        : ctx.ifmt_ctx->duration / 1000000.0 * // duration * fps
+                                              av_q2d(av_guess_frame_rate(ctx.ifmt_ctx, ist, NULL));
+
+            printf("\rProgress: %ld/%ld (%.1f%%)", frames_done, total_frames,
+                   (float)frames_done / total_frames * 100);
         }
+
+        puts("\n");
 
         for (int j = 0; j < ctx.ifmt_ctx->nb_streams; j++) {
             ret = flush_encoder(&ctx, stc->enc_pkt, j);
