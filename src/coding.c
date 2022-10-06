@@ -1,27 +1,34 @@
 #include "incl/coding.h"
+#include <asm-generic/errno-base.h>
 
 void uninit_px_mediactx(PXMediaContext* ctx) {
 
-    for (int i = 0; i < ctx->ifmt_ctx->nb_streams; i++) {
+    if (ctx->ifmt_ctx) {
 
-        if (ctx->stream_ctx_vec[i].dec_ctx)
-            avcodec_free_context(&ctx->stream_ctx_vec[i].dec_ctx);
-        if (ctx->stream_ctx_vec[i].enc_ctx)
-            avcodec_free_context(&ctx->stream_ctx_vec[i].enc_ctx);
+        for (int i = 0; i < ctx->ifmt_ctx->nb_streams; i++) {
+
+            if (ctx->stream_ctx_vec[i].dec_ctx)
+                avcodec_free_context(&ctx->stream_ctx_vec[i].dec_ctx);
+            if (ctx->stream_ctx_vec[i].enc_ctx)
+                avcodec_free_context(&ctx->stream_ctx_vec[i].enc_ctx);
+
+            if (ctx->stream_ctx_vec[i].dec_frame)
+                av_frame_free(&ctx->stream_ctx_vec->dec_frame);
+            if (ctx->stream_ctx_vec[i].enc_pkt)
+                av_packet_free(&ctx->stream_ctx_vec->enc_pkt);
+        }
+
+        avformat_close_input(&ctx->ifmt_ctx);
     }
 
-    if (ctx->stream_ctx_vec->dec_frame)
-        av_frame_free(&ctx->stream_ctx_vec->dec_frame);
-    if (ctx->stream_ctx_vec->enc_pkt)
-        av_packet_free(&ctx->stream_ctx_vec->enc_pkt);
+    if (ctx->stream_ctx_vec)
+        av_freep(ctx->stream_ctx_vec);
 
-    av_freep(ctx->stream_ctx_vec);
-
-    avformat_close_input(&ctx->ifmt_ctx);
-
-    if (!(ctx->ofmt_ctx->oformat->flags & AVFMT_NOFILE))
-        avio_closep(&ctx->ofmt_ctx->pb);
-    avformat_free_context(ctx->ofmt_ctx);
+    if (ctx->ofmt_ctx) {
+        if (!(ctx->ofmt_ctx->oformat->flags & AVFMT_NOFILE))
+            avio_closep(&ctx->ofmt_ctx->pb);
+        avformat_free_context(ctx->ofmt_ctx);
+    }
 }
 
 int init_input(PXMediaContext* ctx, const char* filename) {
@@ -62,6 +69,7 @@ int init_input(PXMediaContext* ctx, const char* filename) {
                 av_log(NULL, AV_LOG_ERROR, "Failed to initialize decoder for stream %d\n", i);
                 return ret;
             }
+
             ctx->stream_ctx_vec[i].dec_ctx->framerate =
                 av_guess_frame_rate(ctx->ifmt_ctx, ctx->ifmt_ctx->streams[i], NULL);
 
@@ -98,6 +106,8 @@ int init_decoder(PXMediaContext* ctx, const unsigned int stream_idx) {
         return AVERROR(ENOMEM);
     }
 
+    ctx->stream_ctx_vec[stream_idx].dec_ctx = dec_ctx;
+
     if ((ret = avcodec_parameters_to_context(dec_ctx, dec_params)) < 0) {
         av_log(NULL, AV_LOG_ERROR, "Failed to copy decoder parameters to input decoder context\n");
         return ret;
@@ -108,8 +118,6 @@ int init_decoder(PXMediaContext* ctx, const unsigned int stream_idx) {
         return ret;
     }
 
-    ctx->stream_ctx_vec[stream_idx].dec_ctx = dec_ctx;
-
     return 0;
 }
 
@@ -117,17 +125,33 @@ int decode_frame(PXStreamContext* ctx, AVFrame* frame, AVPacket* packet) {
 
     int ret;
 
-    if ((ret = avcodec_send_packet(ctx->dec_ctx, packet)) < 0) {
-        av_log(NULL, AV_LOG_ERROR, "Error sending a packet for decoding\n");
-        return ret;
+    ret = avcodec_send_packet(ctx->dec_ctx, packet);
+    if (ret < 0) {
+        switch (ret) {
+            case AVERROR(EAGAIN):
+                return 0;
+            case AVERROR_EOF:
+                return ret;
+            default:
+                av_log(NULL, AV_LOG_ERROR, "Error sending packet to decoder\n");
+                return ret;
+        }
     }
 
     ret = avcodec_receive_frame(ctx->dec_ctx, frame);
-    if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
-        return 0;
-    } else if (ret < 0) {
-        return ret;
+    if (ret < 0) {
+        switch (ret) {
+            case AVERROR(EAGAIN):
+                return 0;
+            case AVERROR_EOF:
+                return ret;
+            default:
+                av_log(NULL, AV_LOG_ERROR, "Error sending packet to decoder\n");
+                return ret;
+        }
     }
+
+    frame->pts = frame->best_effort_timestamp;
 
     return 0;
 }
@@ -218,6 +242,8 @@ int init_encoder(PXMediaContext* ctx, const char* enc_name, AVDictionary** enc_o
         return AVERROR(ENOMEM);
     }
 
+    ctx->stream_ctx_vec[stream_idx].enc_ctx = enc_ctx;
+
     if (dec_ctx->codec_type == AVMEDIA_TYPE_VIDEO) {
 
         enc_ctx->time_base = av_inv_q(dec_ctx->framerate);
@@ -242,20 +268,15 @@ int init_encoder(PXMediaContext* ctx, const char* enc_name, AVDictionary** enc_o
 
     ret = avcodec_parameters_from_context(out_stream->codecpar, enc_ctx);
     if (ret < 0) {
-        av_log(NULL, AV_LOG_ERROR, "Failed to copy encoder parameters to output stream #%u\n",
+        av_log(NULL, AV_LOG_ERROR, "Failed to copy encoder parameters to output stream %d\n",
                stream_idx);
         return ret;
     }
-
-    av_log(NULL, AV_LOG_INFO, "Opening encoder for stream %d, timebase: %d/%d\n", stream_idx,
-           enc_ctx->time_base.num, enc_ctx->time_base.den);
 
     if ((ret = avcodec_open2(enc_ctx, encoder, enc_opts)) < 0) {
         av_log(NULL, AV_LOG_ERROR, "Failed to open encoder\n");
         return ret;
     }
-
-    ctx->stream_ctx_vec[stream_idx].enc_ctx = enc_ctx;
 
     return 0;
 }
@@ -263,21 +284,39 @@ int init_encoder(PXMediaContext* ctx, const char* enc_name, AVDictionary** enc_o
 int encode_frame(PXMediaContext* ctx, AVFrame* frame, AVPacket* packet, unsigned int stream_idx) {
 
     int ret;
-    frame->pts = frame->best_effort_timestamp;
+    int fret;
+    PXStreamContext* stc = &ctx->stream_ctx_vec[stream_idx];
 
-    ret = avcodec_send_frame(ctx->stream_ctx_vec[stream_idx].enc_ctx, frame);
+    ret = avcodec_send_frame(stc->enc_ctx, frame);
     if (ret < 0)
-        return ret;
+        switch (ret) {
+            case AVERROR(EAGAIN):
+                return 0;
+            case AVERROR_EOF:
+                return ret;
+            default:
+                ret = 0;
+        }
 
     while (ret >= 0) {
 
-        ret = avcodec_receive_packet(ctx->stream_ctx_vec[stream_idx].enc_ctx, packet);
+        ret = avcodec_receive_packet(stc->enc_ctx, packet);
+        if (ret == AVERROR_EOF || ret == AVERROR(EAGAIN)) {
+            return 0;
+        } else if (ret < 0) {
+            av_log(NULL, AV_LOG_ERROR, "Error receiving packet from encoder\n");
+            return ret;
+        }
 
         packet->stream_index = stream_idx;
-        av_packet_rescale_ts(packet, ctx->stream_ctx_vec[stream_idx].enc_ctx->time_base,
+        av_packet_rescale_ts(packet, stc->enc_ctx->time_base,
                              ctx->ofmt_ctx->streams[stream_idx]->time_base);
 
         ret = av_interleaved_write_frame(ctx->ofmt_ctx, packet);
+        if (ret < 0) {
+            av_log(NULL, AV_LOG_ERROR, "Error writing packet to output file\n");
+            return ret;
+        }
     }
 
     av_frame_unref(frame);
@@ -287,6 +326,6 @@ int encode_frame(PXMediaContext* ctx, AVFrame* frame, AVPacket* packet, unsigned
 
 int flush_encoder(PXMediaContext* ctx, AVPacket* packet, unsigned int stream_idx) {
     return (ctx->stream_ctx_vec[stream_idx].enc_ctx->codec->capabilities & AV_CODEC_CAP_DELAY)
-               ? encode_frame(ctx, 0, packet, stream_idx)
+               ? encode_frame(ctx, NULL, packet, stream_idx)
                : 0;
 }
