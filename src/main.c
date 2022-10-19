@@ -1,7 +1,8 @@
 #include "incl/coding.h"
 #include "incl/pixie.h"
+
 #include <ctype.h> // isalpha
-#include <libavutil/log.h>
+#include <sys/stat.h> // mkdir
 
 void px_print_info(const char* prog_name, const char full) {
 
@@ -11,23 +12,24 @@ void px_print_info(const char* prog_name, const char full) {
 
     if (full) {
         puts("Options:\n"
-             "  -i <input(s)>  Input file(s), separated by space\n"
-             "  -o <output>    Output file, treated as a folder if inputs > 1\n"
-             "  -v <encoder>   Video encoder name\n"
-             "  -a <encoder>   Audio encoder name\n"
-             "  -t <threads>   Number of threads to use for filtering\n"
-             "  -h             Print this help message\n");
+             "  -i <file> [file ...]  Input file(s), separated by space\n"
+             "  -o <file>             Output file, treated as a folder if inputs > 1\n"
+             "  -v <encoder>          Video encoder name\n"
+             "  -a <encoder>          Audio encoder name\n"
+             "  -t <int>              Number of threads to use for filtering\n"
+             "  -l <int>              Log level: 0 = error (default), 1 = verbose, 2 = debug\n"
+             "  -h                    Print this help message");
     }
 }
 
-int px_parse_args(int argc, char** argv, PXSettings* s) {
+int px_parse_args(int argc, char** argv, PXSettings* s, int* should_exit) {
 
     int i;
     int ret = 0;
 
     argc--;
 
-    if (argc < 2) {
+    if (argc < 1) {
         px_print_info(argv[0], 0);
         return 1;
     }
@@ -44,7 +46,7 @@ int px_parse_args(int argc, char** argv, PXSettings* s) {
         }
 
     // clang-format on
-    for (i = 1; i < argc; i++) {
+    for (i = 1; i < argc + 1; i++) {
 
         if (argc >= i + 1) {
 
@@ -94,15 +96,16 @@ int px_parse_args(int argc, char** argv, PXSettings* s) {
                 i++;
             });
 
+            if_arg_is("-l", {
+                s->log_level = atoi(argv[i + 1]);
+                i++;
+            });
+
         } else {
 
             if (strcmp(argv[i], "-h") == 0) {
                 px_print_info(argv[0], 1);
-                break;
-            }
-
-            if (strcmp(argv[i], "-version") == 0) {
-                px_print_info(argv[0], 0);
+                *should_exit = 1;
                 break;
             }
 
@@ -128,12 +131,6 @@ int main(int argc, char** argv) {
 
     // clang-format off
 
-    #if DEBUG
-        av_log_set_level(AV_LOG_DEBUG);
-    #else
-        av_log_set_level(AV_LOG_ERROR);
-    #endif
-
     #define check_err(msg, ...)                             \
         if (ret == AVERROR_EOF)                             \
             goto success;                                   \
@@ -144,18 +141,39 @@ int main(int argc, char** argv) {
 
     // clang-format on
 
-    PXSettings s = {.output_file = NULL, .enc_opts_v = NULL, .enc_opts_a = NULL};
-    ret = px_parse_args(argc, argv, &s);
-    if (ret)
+    PXSettings s = {.output_file = NULL,
+                    .enc_opts_v = NULL,
+                    .enc_opts_a = NULL,
+                    .log_level = 0,
+                    .n_threads = 0};
+
+    int should_exit = 0;
+    ret = px_parse_args(argc, argv, &s, &should_exit);
+    if (ret || should_exit)
         return ret;
 
-    if (!s.output_file) {
-        av_log(NULL, AV_LOG_ERROR, "No output file specified\n");
-        return 1;
+    switch (s.log_level) {
+        case 0:
+            av_log_set_level(AV_LOG_ERROR);
+            break;
+        case 1:
+            av_log_set_level(AV_LOG_VERBOSE);
+            break;
+        case 2:
+            av_log_set_level(AV_LOG_DEBUG);
+            break;
+        default:
+            av_log(NULL, AV_LOG_ERROR, "Invalid log level: %d\n", s.log_level);
+            return 1;
     }
 
     if (!s.n_input_files) {
         av_log(NULL, AV_LOG_ERROR, "No input file specified\n");
+        return 1;
+    }
+
+    if (!s.output_file) {
+        av_log(NULL, AV_LOG_ERROR, "No output file specified\n");
         return 1;
     }
 
@@ -167,8 +185,13 @@ int main(int argc, char** argv) {
         goto fail;
     }
 
-    if (s.n_input_files > 1) // /path/to/{output_file}/{input_files[i]}
+    if (s.n_input_files > 1) { // /path/to/{output_file}/{input_files[i]}
         strcat(s.output_file, "/");
+        if (mkdir(s.output_file, 0777) < 0) {
+            av_log(NULL, AV_LOG_ERROR, "Failed to create output directory: %s\n", strerror(errno));
+            goto fail;
+        }
+    }
 
     for (int i = 0; i < s.n_input_files; i++) {
 
@@ -185,14 +208,19 @@ int main(int argc, char** argv) {
         AVStream* ost; // current output stream
         PXStreamContext* stc; // current stream context
 
-        int frames_done = 0;
+        long int frames_done = 0;
+
+        long int curr_pts = 0;
+        long int last_pts = INT_MIN; // avoid skipping the first frame
+
+        long int skipped = 0;
 
         while (1) {
 
             ret = av_read_frame(ctx.ifmt_ctx, dec_pkt);
-            check_err("Failed to read frame\n")
+            check_err("Failed to read frame\n");
 
-                ist = ctx.ifmt_ctx->streams[dec_pkt->stream_index];
+            ist = ctx.ifmt_ctx->streams[dec_pkt->stream_index];
             ost = ctx.ofmt_ctx->streams[dec_pkt->stream_index];
             stc = &ctx.stream_ctx_vec[dec_pkt->stream_index];
 
@@ -201,6 +229,13 @@ int main(int argc, char** argv) {
 
                 ret = decode_frame(stc, stc->dec_frame, dec_pkt);
                 check_err("Failed to decode frame\n");
+
+                curr_pts = stc->dec_frame->pts;
+                if (curr_pts != AV_NOPTS_VALUE && last_pts >= curr_pts) { // skip duplicate pts
+                    skipped++;
+                    goto skip;
+                }
+                last_pts = curr_pts;
 
                 ret = encode_frame(&ctx, stc->dec_frame, stc->enc_pkt, dec_pkt->stream_index);
                 check_err("Failed to encode frame\n");
@@ -212,17 +247,18 @@ int main(int argc, char** argv) {
                 check_err("Failed to write remuxed packet\n");
             }
 
-            frames_done++;
-
+        skip:
             av_packet_unref(dec_pkt);
 
+            frames_done++;
             long int total_frames = ist->nb_frames
                                         ? ist->nb_frames
                                         : ctx.ifmt_ctx->duration / 1000000.0 * // duration * fps
                                               av_q2d(stc->dec_ctx->framerate);
 
-            printf("\rProgress: %d/%ld (%.1f%%)", frames_done, total_frames,
+            printf("\rProgress: %ld/%ld %ld skipped (%.1f%%)", frames_done, total_frames, skipped,
                    (float)frames_done / total_frames * 100);
+            fflush(stdout);
         }
 
     success:
@@ -249,6 +285,10 @@ int main(int argc, char** argv) {
         if (ret < 0 && ret != AVERROR_EOF) {
             av_log(NULL, AV_LOG_ERROR, "Error occurred: %s (%d)\n", av_err2str(ret), ret);
             break;
+        }
+
+        if (s.n_input_files > 1) { // reset output file path
+            s.output_file[strlen(s.output_file) - strlen(s.input_files[i])] = '\0';
         }
     }
 

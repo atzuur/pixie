@@ -1,13 +1,10 @@
 CC = gcc
-
-CFLAGS_DEBUG = -pedantic -g3 -D DEBUG
+BIN = pixie
+CFLAGS_DEBUG = -pedantic -g3
 CFLAGS_RELEASE = -O3 -march=native
 
 LIBS = $(shell pkg-config --cflags --libs libavcodec libavformat libavutil)
-
 FILES = src/*.c
-
-BIN = pixie
 
 .PHONY = release
 

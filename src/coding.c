@@ -294,8 +294,12 @@ int encode_frame(PXMediaContext* ctx, AVFrame* frame, AVPacket* packet, unsigned
                 return 0;
             case AVERROR_EOF:
                 return ret;
-            default:
+            case AVERROR(EINVAL): // should not happen
                 ret = 0;
+                break;
+            default:
+                av_log(NULL, AV_LOG_ERROR, "Error sending frame to encoder\n");
+                return ret;
         }
 
     while (ret >= 0) {
@@ -309,7 +313,8 @@ int encode_frame(PXMediaContext* ctx, AVFrame* frame, AVPacket* packet, unsigned
         }
 
         packet->stream_index = stream_idx;
-        av_packet_rescale_ts(packet, stc->enc_ctx->time_base,
+
+        av_packet_rescale_ts(packet, ctx->ifmt_ctx->streams[stream_idx]->time_base,
                              ctx->ofmt_ctx->streams[stream_idx]->time_base);
 
         ret = av_interleaved_write_frame(ctx->ofmt_ctx, packet);
