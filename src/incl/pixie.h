@@ -2,7 +2,7 @@
 
 #include <libavutil/dict.h>
 
-#define PX_VERSION "0.1.1"
+#define PX_VERSION "0.1.0"
 
 typedef struct PXSettings {
     char** input_files;
@@ -15,6 +15,5 @@ typedef struct PXSettings {
     AVDictionary* enc_opts_v;
     AVDictionary* enc_opts_a;
 
-    int n_threads;
-    int log_level;
+    unsigned int n_threads;
 } PXSettings;

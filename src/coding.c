@@ -1,11 +1,10 @@
-#include "incl/coding.h"
-#include <asm-generic/errno-base.h>
+#include "coding.h"
 
 void uninit_px_mediactx(PXMediaContext* ctx) {
 
     if (ctx->ifmt_ctx) {
 
-        for (int i = 0; i < ctx->ifmt_ctx->nb_streams; i++) {
+        for (unsigned i = 0; i < ctx->ifmt_ctx->nb_streams; i++) {
 
             if (ctx->stream_ctx_vec[i].dec_ctx)
                 avcodec_free_context(&ctx->stream_ctx_vec[i].dec_ctx);
@@ -34,8 +33,6 @@ void uninit_px_mediactx(PXMediaContext* ctx) {
 int init_input(PXMediaContext* ctx, const char* filename) {
 
     int ret;
-    int i;
-
     ctx->ifmt_ctx = NULL;
 
     if ((ret = avformat_open_input(&ctx->ifmt_ctx, filename, NULL, NULL)) < 0) {
@@ -52,9 +49,7 @@ int init_input(PXMediaContext* ctx, const char* filename) {
     if (!ctx->stream_ctx_vec)
         return AVERROR(ENOMEM);
 
-    const AVCodec* decoder = NULL;
-
-    for (i = 0; i < ctx->ifmt_ctx->nb_streams; i++) {
+    for (unsigned i = 0; i < ctx->ifmt_ctx->nb_streams; i++) {
 
         int stream_type = ctx->ifmt_ctx->streams[i]->codecpar->codec_type;
 
@@ -169,7 +164,7 @@ int init_output(PXMediaContext* ctx, const char* filename, const PXSettings* s) 
     }
 
     // copy input streams to output and open encoders
-    for (int i = 0; i < ctx->ifmt_ctx->nb_streams; i++) {
+    for (unsigned i = 0; i < ctx->ifmt_ctx->nb_streams; i++) {
 
         // clang-format off
         AVStream* ostream = avformat_new_stream(ctx->ofmt_ctx, NULL);
@@ -284,7 +279,6 @@ int init_encoder(PXMediaContext* ctx, const char* enc_name, AVDictionary** enc_o
 int encode_frame(PXMediaContext* ctx, AVFrame* frame, AVPacket* packet, unsigned int stream_idx) {
 
     int ret;
-    int fret;
     PXStreamContext* stc = &ctx->stream_ctx_vec[stream_idx];
 
     ret = avcodec_send_frame(stc->enc_ctx, frame);

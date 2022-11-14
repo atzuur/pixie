@@ -1,8 +1,8 @@
-#include "incl/coding.h"
-#include "incl/pixie.h"
+#include "coding.h"
+#include "pixie.h"
+#include "util/utils.h"
 
 #include <ctype.h> // isalpha
-#include <sys/stat.h> // mkdir
 
 void px_print_info(const char* prog_name, const char full) {
 
@@ -128,6 +128,7 @@ int px_parse_args(int argc, char** argv, PXSettings* s, int* should_exit) {
 int main(int argc, char** argv) {
 
     int ret;
+    int i = 0;
 
     // clang-format off
 
@@ -187,13 +188,15 @@ int main(int argc, char** argv) {
 
     if (s.n_input_files > 1) { // /path/to/{output_file}/{input_files[i]}
         strcat(s.output_file, "/");
-        if (mkdir(s.output_file, 0777) < 0) {
-            av_log(NULL, AV_LOG_ERROR, "Failed to create output directory: %s\n", strerror(errno));
+        if (!create_folder(s.output_file)) {
+            char err[256];
+            get_os_error(err);
+            av_log(NULL, AV_LOG_ERROR, "Failed to create output directory: %s\n", err);
             goto fail;
         }
     }
 
-    for (int i = 0; i < s.n_input_files; i++) {
+    for (; i < s.n_input_files; i++) {
 
         if ((ret = init_input(&ctx, s.input_files[i])) < 0)
             goto fail;
@@ -204,16 +207,16 @@ int main(int argc, char** argv) {
         if ((ret = init_output(&ctx, outfile, &s) < 0))
             goto fail;
 
-        AVStream* ist; // current input stream
-        AVStream* ost; // current output stream
-        PXStreamContext* stc; // current stream context
+        AVStream* ist = {0}; // current input stream
+        AVStream* ost = {0}; // current output stream
+        PXStreamContext* stc = {0}; // current stream context
 
-        long int frames_done = 0;
+        long frames_done = 0;
 
-        long int curr_pts = 0;
-        long int last_pts = INT_MIN; // avoid skipping the first frame
+        long curr_pts = 0;
+        long last_pts = INT_MIN; // avoid skipping the first frame
 
-        long int skipped = 0;
+        long skipped = 0;
 
         while (1) {
 
@@ -264,7 +267,7 @@ int main(int argc, char** argv) {
     success:
         putchar('\n');
 
-        for (int j = 0; j < ctx.ifmt_ctx->nb_streams; j++) {
+        for (unsigned j = 0; j < ctx.ifmt_ctx->nb_streams; j++) {
             ret = flush_encoder(&ctx, stc->enc_pkt, j);
             if (ret < 0 && ret != AVERROR_EOF) {
                 av_log(NULL, AV_LOG_ERROR, "Failed to flush encoder\n");
