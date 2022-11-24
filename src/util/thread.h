@@ -1,142 +1,146 @@
 // s/o luminance
 // https://github.com/unknownopponent/C_Simple_Thread
+//
+// all of these throw because propagating would've been a pain
+// they should all be fatal anyways
 
 #pragma once
 
-#include <assert.h>
+#include "utils.h"
+
+#include <stdint.h> // intptr_t
 #include <string.h> // memset
-#include <stdio.h>
 
 #if __STDC_VERSION__ >= 201112L && !defined(__STDC_NO_THREADS__)
-	#define C11_THREADS
-	#include <threads.h>
-#endif
+#define C11_THREADS
+#include <threads.h>
 
-#if defined(_WIN32) && !defined(C11_THREADS)
-	#define WIN32_THREADS
-	#include <windows.h>
-#endif
+#elif defined(_WIN32) && !defined(C11_THREADS)
+#define WIN32_THREADS
+#include <windows.h>
 
-#if defined(__unix__) && !defined(C11_THREADS)
-	#define POSIX_THREADS
-	#include <pthread.h>
-#endif
+#elif defined(__unix__) && !defined(C11_THREADS)
+#define POSIX_THREADS
+#include <pthread.h>
 
-#if !defined(C11_THREADS) && !defined(_WIN32) && !defined(__unix__)
-	#error no thread implementation available
+#elif !defined(C11_THREADS) && !defined(_WIN32) && !defined(__unix__)
+#error No thread implementation available!
 #endif
 
 typedef struct PXThread {
-	void* (*func)(void *);
-	void* args;
+    void* (*func)(void*);
+    void* args;
 
 #ifdef C11_THREADS
-	thrd_t thread_handle;
+    thrd_t thread_handle;
 #endif
 #ifdef WIN32_THREADS
-	HANDLE thread_handle;
+    HANDLE thread_handle;
 #endif
 #ifdef POSIX_THREADS
-	pthread_t thread_handle;
+    pthread_t thread_handle;
 #endif
 
 } PXThread;
 
+void pxt_create(PXThread* thread);
 
-char px_create(PXThread* thread);
-char px_join(PXThread* thread, int* return_code);
+// thread return value is stored in `*return_code`
+void pxt_join(PXThread* thread, int* return_code);
 
+// terminate calling thread with code `ret`
 void pxt_exit(int ret);
 
-
-inline char pxt_create(PXThread* thread) {
-	assert(thread->func != 0);
+inline void pxt_create(PXThread* thread) {
+    assert(thread->func);
 
 #ifdef C11_THREADS
-	if (thrd_create(&thread->thread_handle, thread->func, thread->args) != thrd_success)
-		return 1;
-	return 0;
+
+    int res = thrd_create(&thread->thread_handle, thread->func, thread->args);
+    assert__(res == thrd_success) {
+        throw_msg("thrd_create", res);
+    }
+
 #endif
 #ifdef WIN32_THREADS
-	thread->thread_handle = CreateThread(0, 0, (LPTHREAD_START_ROUTINE)thread->func, thread->args, 0, 0);
 
-	if (thread->thread_handle)
-		return 0;
-	return 1;
+    thread->thread_handle =
+        CreateThread(0, 0, (LPTHREAD_START_ROUTINE)thread->func, thread->args, 0, 0);
+
+    assert__(thread->thread_handle) {
+        throw_msg("CreateThread", last_errcode());
+    }
+
 #endif
 #ifdef POSIX_THREADS
-	if (pthread_create(&thread->thread_handle, 0, thread->func, thread->args))
-		return 1;
-	return 0;
+
+    int res = pthread_create(&thread->thread_handle, 0, thread->func, thread->args);
+    assert__(res == 0) {
+        throw_msg("pthread_create", res);
+    }
+
 #endif
 }
 
-inline char pxt_join(PXThread* thread, int* return_code) {
-	assert(thread->thread_handle);
+inline void pxt_join(PXThread* thread, int* return_code) {
+    assert(thread->thread_handle);
 
 #ifdef C11_THREADS
-	int res = thrd_join(thread->thread_handle, return_code);
-	if (res != thrd_success)
-	{
-		assert(0);
-		return 1;
-	}
 
-	memset(&thread->thread_handle, '\0', sizeof(thrd_t));
+    int res = thrd_join(thread->thread_handle, return_code);
+    assert__(res == thrd_success) {
+        throw_msg("thrd_join", res);
+    }
 
-	return 0;
+    memset(&thread->thread_handle, '\0', sizeof(thrd_t));
+
 #endif
 #ifdef WIN32_THREADS
-	
-	DWORD res = WaitForSingleObject(thread->thread_handle, INFINITE);
-	if (res) {
-		assert(0);
-		return 1;
-	}
 
-	DWORD ret;
-	BOOL res2 = GetExitCodeThread(thread->thread_handle, &ret);
-	if (!res2) {
-		assert(0);
-		return 1;
-	}
+    DWORD res = WaitForSingleObject(thread->thread_handle, INFINITE);
+    assert__(res == WAIT_OBJECT_0) {
+        throw_msg("WaitForSingleObject", last_errcode());
+    }
 
-	res2 = CloseHandle(thread->thread_handle);
-	if (res) {
-		assert(0);
-		return 1;
-	}
+    DWORD ret;
+    BOOL res2 = GetExitCodeThread(thread->thread_handle, &ret);
+    assert__(res2) {
+        throw_msg("GetExitCodeThread", last_errcode());
+    }
 
-	memset(&thread->thread_handle, '\0', sizeof(HANDLE));
+    res2 = CloseHandle(thread->thread_handle);
+    assert__(res2) {
+        throw_msg("CloseHandle", last_errcode());
+    }
 
-	*return_code = (int)ret;
+    memset(&thread->thread_handle, '\0', sizeof(HANDLE));
 
-	return 0;
+    *return_code = (int)ret;
+
 #endif
 #ifdef POSIX_THREADS
-	void* ret;
-	int res = pthread_join(thread->thread_handle, &ret);
-	if (res) {
-		assert(0);
-		return 1;
-	}
 
-	memset(&thread->thread_handle, '\0', sizeof(pthread_t));
+    void* ret;
+    int res = pthread_join(thread->thread_handle, &ret);
+    assert__(res == 0) {
+        throw_msg("pthread_join", res);
+    }
 
-	*return_code = (int)ret;
+    memset(&thread->thread_handle, '\0', sizeof(pthread_t));
 
-	return 0;
+    *return_code = (int)(intptr_t)ret;
+
 #endif
 }
 
 inline void pxt_exit(int ret) {
 #ifdef C11_THREADS
-	thrd_exit(ret);
+    thrd_exit(ret);
 #endif
 #ifdef WIN32_THREADS
-	ExitThread(ret);
+    ExitThread(ret);
 #endif
 #ifdef POSIX_THREADS
-	pthread_exit((void*)ret);
+    pthread_exit((void*)(intptr_t)ret);
 #endif
 }

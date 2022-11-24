@@ -1,9 +1,9 @@
 #include "utils.h"
+
 #include <string.h>
 
 #if defined(__unix__) || (defined(__APPLE__) && defined(__MACH__))
 
-#include <errno.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <time.h>
@@ -16,12 +16,11 @@ int get_available_threads() {
     return ret < 1 ? 1 : ret;
 }
 
-// dest should be at least 256 bytes
-void get_os_error(char* dest) {
-    strcpy(dest, strerror(errno));
+void last_errstr(char* dest, int err) {
+    int errcode = err ? err : errno;
+    strerror_r(errcode, dest, 256);
 }
 
-// return 0 on failure
 int create_folder(char* path) {
     int ret = mkdir(path, 0777);
     if (ret < 0)
@@ -40,21 +39,18 @@ void sleep_ms(int ms) {
 
 #elif defined(_WIN32)
 
-#include <windows.h>
-
 int get_available_threads() {
     SYSTEM_INFO info;
     GetSystemInfo(&info);
     return info.dwNumberOfProcessors;
 }
 
-// dest should be at least 256 bytes
-void get_os_error(char* dest) {
-    FormatMessage(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, NULL, GetLastError(),
+void last_errstr(char* dest, int err) {
+    int errcode = err ? err : GetLastError();
+    FormatMessage(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, NULL, errcode,
                   MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), dest, 256, NULL);
 }
 
-// return 0 on failure
 int create_folder(char* path) {
     if (!CreateDirectoryA(path, 0))
         return GetLastError() == ERROR_ALREADY_EXISTS;

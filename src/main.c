@@ -190,8 +190,9 @@ int main(int argc, char** argv) {
         strcat(s.output_file, "/");
         if (!create_folder(s.output_file)) {
             char err[256];
-            get_os_error(err);
-            av_log(NULL, AV_LOG_ERROR, "Failed to create output directory: %s\n", err);
+            last_errstr(err, 0);
+            av_log(NULL, AV_LOG_ERROR, "Failed to create output directory: %s (%d)\n", err,
+                   last_errcode());
             goto fail;
         }
     }
