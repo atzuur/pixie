@@ -1,3 +1,0 @@
-[submodule "src/util/containers"]
-	path = src/util/containers
-	url = https://github.com/atzuur/containers.git

@@ -1,6 +1,9 @@
 #include "utils.h"
-
 #include <string.h>
+
+void oom(size_t alloc_size) {
+    fprintf(stderr, "Memory allocation of %zu bytes failed\n", alloc_size);
+}
 
 #if defined(__unix__) || (defined(__APPLE__) && defined(__MACH__))
 
@@ -24,7 +27,7 @@ void last_errstr(char* dest, int err) {
 int create_folder(char* path) {
     int ret = mkdir(path, 0777);
     if (ret < 0)
-        return errno == EEXIST;
+        return errno != EEXIST;
     return 1;
 }
 
@@ -53,7 +56,7 @@ void last_errstr(char* dest, int err) {
 
 int create_folder(char* path) {
     if (!CreateDirectoryA(path, 0))
-        return GetLastError() == ERROR_ALREADY_EXISTS;
+        return GetLastError() != ERROR_ALREADY_EXISTS;
     return 1;
 }
 
