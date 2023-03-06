@@ -25,7 +25,10 @@ int px_main(PXSettings s) {
 
         int transc_ret = 0;
         px_thrd_join(&pxc.transc_thread, &transc_ret);
+
         if (transc_ret) {
+            px_log(PX_LOG_ERROR, "Error occurred while processing file %s (stream index %d)\n",
+                   pxc.settings.input_files[pxc.input_idx], pxc.stream_idx);
             ret = transc_ret;
             break;
         }

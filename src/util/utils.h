@@ -68,9 +68,10 @@ static inline void free_s(void* ptr) {
 // automated error message
 // usage: throw_msg("function_name", returned_error_code);
 // use for os-related functions that return standard error codes
-#define throw_msg(func, err)                                                                      \
-    do {                                                                                          \
-        char errstr[256];                                                                         \
-        last_errstr(errstr, err);                                                                 \
-        fprintf(stderr, "%s failed at %s:%d : %s (%d)\n", func, __FILE__, __LINE__, errstr, err); \
-    } while (0)
+static inline void throw_msg(const char* func, int err) {
+
+    char errstr[256];
+    last_errstr(errstr, err);
+
+    fprintf(stderr, "%s() failed at %s:%d : %s (%d)\n", func, __FILE__, __LINE__, errstr, err);
+}

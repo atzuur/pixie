@@ -19,12 +19,13 @@
 // fuck c11 for not using errno
 void c11thrd_err_strerror_r(int err, char* dest, size_t len);
 
-#define c11thrd_throw_msg(func, err)                                                              \
-    do {                                                                                          \
-        char errstr[256];                                                                         \
-        c11thrd_err_strerror_r(err, errstr, 256u);                                                \
-        fprintf(stderr, "%s failed at %s:%d : %s (%d)\n", func, __FILE__, __LINE__, errstr, err); \
-    } while (0)
+static inline void c11thrd_throw_msg(const char* func, int err) {
+
+    char errstr[256];
+    c11thrd_err_strerror_r(err, errstr, 256u);
+
+    fprintf(stderr, "%s() failed at %s:%d : %s (%d)\n", func, __FILE__, __LINE__, errstr, err);
+}
 
 #elif defined(_WIN32) && !defined(C11_THREADS)
 #define WIN32_THREADS

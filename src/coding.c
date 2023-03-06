@@ -1,4 +1,9 @@
 #include "coding.h"
+#include "log.h"
+
+static inline void lav_throw_msg(const char* func, int err) {
+    px_log(PX_LOG_ERROR, "%s() failed at %s:%d : %s (%d)\n", func, __FILE__, __LINE__, av_err2str(err), err);
+}
 
 void px_mediactx_deinit(PXMediaContext* ctx) {
 
@@ -32,13 +37,13 @@ int init_input(PXMediaContext* ctx, const char* filename) {
 
     ret = avformat_open_input(&ctx->ifmt_ctx, filename, NULL, NULL);
     if (ret < 0) {
-        av_log(NULL, AV_LOG_ERROR, "Cannot open input file '%s'\n", filename);
+        lav_throw_msg("avformat_open_input", ret);
         return ret;
     }
 
     ret = avformat_find_stream_info(ctx->ifmt_ctx, NULL);
     if (ret < 0) {
-        av_log(NULL, AV_LOG_ERROR, "Cannot find stream information\n");
+        lav_throw_msg("avformat_find_stream_info", ret);
         return ret;
     }
 
@@ -55,7 +60,7 @@ int init_input(PXMediaContext* ctx, const char* filename) {
         enum AVMediaType stream_type = ctx->ifmt_ctx->streams[i]->codecpar->codec_type;
 
         if (stream_type == AVMEDIA_TYPE_UNKNOWN) {
-            av_log(NULL, AV_LOG_WARNING, "Stream %d is of unknown type, cannot proceed\n", i);
+            px_log(PX_LOG_ERROR, "Stream %d is of unknown type, cannot proceed\n", i);
             return AVERROR_INVALIDDATA;
         }
 
@@ -76,7 +81,7 @@ int init_input(PXMediaContext* ctx, const char* filename) {
     }
 
     if (!streams_found) {
-        av_log(NULL, AV_LOG_ERROR, "No valid streams found in file \"%s\"\n", filename);
+        px_log(PX_LOG_ERROR, "No valid streams found in file \"%s\"\n", filename);
         return AVERROR_INVALIDDATA;
     }
 
@@ -90,13 +95,13 @@ int init_decoder(PXMediaContext* ctx, unsigned stream_idx) {
 
     const AVCodec* decoder = avcodec_find_decoder(ctx->ifmt_ctx->streams[stream_idx]->codecpar->codec_id);
     if (!decoder) {
-        av_log(NULL, AV_LOG_ERROR, "Failed to find decoder for stream %d\n", stream_idx);
+        px_log(PX_LOG_ERROR, "Failed to find decoder for stream %d\n", stream_idx);
         return AVERROR_DECODER_NOT_FOUND;
     }
 
     AVCodecContext* dec_ctx = avcodec_alloc_context3(decoder);
     if (!dec_ctx) {
-        av_log(NULL, AV_LOG_ERROR, "Failed to allocate decoder context\n");
+        oom(sizeof *dec_ctx);
         return AVERROR(ENOMEM);
     }
 
@@ -104,13 +109,13 @@ int init_decoder(PXMediaContext* ctx, unsigned stream_idx) {
 
     ret = avcodec_parameters_to_context(dec_ctx, dec_params);
     if (ret < 0) {
-        av_log(NULL, AV_LOG_ERROR, "Failed to copy decoder parameters to input decoder context\n");
+        lav_throw_msg("avcodec_parameters_to_context", ret);
         return ret;
     }
 
     ret = avcodec_open2(dec_ctx, decoder, NULL);
     if (ret < 0) {
-        av_log(NULL, AV_LOG_ERROR, "Failed to open decoder for stream %d\n", stream_idx);
+        lav_throw_msg("avcodec_open2", ret);
         return ret;
     }
 
@@ -129,7 +134,7 @@ int decode_frame(const PXStreamContext* ctx, AVFrame* frame, AVPacket* packet) {
             case AVERROR_EOF:
                 return ret;
             default:
-                av_log(NULL, AV_LOG_ERROR, "Failed to send packet to decoder\n");
+                lav_throw_msg("avcodec_send_packet", ret);
                 return ret;
         }
     }
@@ -142,7 +147,7 @@ int decode_frame(const PXStreamContext* ctx, AVFrame* frame, AVPacket* packet) {
             case AVERROR_EOF:
                 return ret;
             default:
-                av_log(NULL, AV_LOG_ERROR, "Failed to receive frame from decoder\n");
+                lav_throw_msg("avcodec_receive_frame", ret);
                 return ret;
         }
     }
@@ -161,8 +166,8 @@ int init_output(PXMediaContext* ctx, const char* filename, PXSettings* s) {
 
     ret = avformat_alloc_output_context2(&ctx->ofmt_ctx, NULL, NULL, filename);
     if (ret < 0) {
-        av_log(NULL, AV_LOG_ERROR, "Failed to allocate output context\n");
-        return AVERROR_UNKNOWN;
+        lav_throw_msg("avformat_alloc_output_context2", ret);
+        return ret;
     }
 
     // copy input streams to output and open encoders
@@ -170,8 +175,8 @@ int init_output(PXMediaContext* ctx, const char* filename, PXSettings* s) {
 
         AVStream* ostream = avformat_new_stream(ctx->ofmt_ctx, NULL);
         if (!ostream) {
-            av_log(NULL, AV_LOG_ERROR, "Failed to add output stream\n");
-            return AVERROR_UNKNOWN;
+            lav_throw_msg("avformat_new_stream", ret);
+            return ret;
         }
 
         enum AVMediaType stream_type = ctx->stream_ctx_vec[i].dec_ctx->codec_type;
@@ -179,14 +184,13 @@ int init_output(PXMediaContext* ctx, const char* filename, PXSettings* s) {
         if (stream_type == AVMEDIA_TYPE_VIDEO) {
 
             ret = init_encoder(ctx, enc_name, &s->enc_opts_v, i, ostream);
-            if (ret < 0) {
-                av_log(NULL, AV_LOG_ERROR, "Failed to initialize encoder for stream %d\n", i);
+            if (ret < 0)
                 return ret;
-            }
+
         } else {
             ret = avcodec_parameters_copy(ostream->codecpar, ctx->ifmt_ctx->streams[i]->codecpar);
             if (ret < 0) {
-                av_log(NULL, AV_LOG_ERROR, "Failed to copy codec parameters to output stream\n");
+                lav_throw_msg("avcodec_parameters_copy", ret);
                 return ret;
             }
             ostream->time_base = ctx->ifmt_ctx->streams[i]->time_base;
@@ -199,14 +203,14 @@ int init_output(PXMediaContext* ctx, const char* filename, PXSettings* s) {
     if (!(ctx->ofmt_ctx->oformat->flags & AVFMT_NOFILE)) {
         ret = avio_open(&ctx->ofmt_ctx->pb, filename, AVIO_FLAG_WRITE);
         if (ret < 0) {
-            av_log(NULL, AV_LOG_ERROR, "Failed to open output file \"%s\"\n", filename);
+            lav_throw_msg("avio_open", ret);
             return ret;
         }
     }
 
     ret = avformat_write_header(ctx->ofmt_ctx, NULL);
     if (ret < 0) {
-        av_log(NULL, AV_LOG_ERROR, "Failed to write output stream header\n");
+        lav_throw_msg("avformat_write_header", ret);
         return ret;
     }
 
@@ -227,7 +231,7 @@ int init_encoder(const PXMediaContext* ctx, const char* enc_name, AVDictionary**
 
     AVCodecContext* enc_ctx = avcodec_alloc_context3(encoder);
     if (!enc_ctx) {
-        av_log(NULL, AV_LOG_ERROR, "Failed to allocate encoder context\n");
+        oom(sizeof *enc_ctx);
         return AVERROR(ENOMEM);
     }
 
@@ -244,13 +248,13 @@ int init_encoder(const PXMediaContext* ctx, const char* enc_name, AVDictionary**
 
     ret = avcodec_parameters_from_context(out_stream->codecpar, enc_ctx);
     if (ret < 0) {
-        av_log(NULL, AV_LOG_ERROR, "Failed to copy encoder parameters to output stream %d\n", stream_idx);
+        lav_throw_msg("avcodec_parameters_from_context", ret);
         return ret;
     }
 
     ret = avcodec_open2(enc_ctx, encoder, enc_opts);
     if (ret < 0) {
-        av_log(NULL, AV_LOG_ERROR, "Failed to open encoder\n");
+        lav_throw_msg("avcodec_open2", ret);
         return ret;
     }
 
@@ -273,7 +277,7 @@ int encode_frame(const PXMediaContext* ctx, AVFrame* frame, AVPacket* packet, un
                 ret = 0;
                 break;
             default:
-                av_log(NULL, AV_LOG_ERROR, "Error sending frame to encoder\n");
+                lav_throw_msg("avcodec_send_frame", ret);
                 return ret;
         }
 
@@ -283,7 +287,7 @@ int encode_frame(const PXMediaContext* ctx, AVFrame* frame, AVPacket* packet, un
         if (ret == AVERROR_EOF || ret == AVERROR(EAGAIN)) {
             return 0;
         } else if (ret < 0) {
-            av_log(NULL, AV_LOG_ERROR, "Error receiving packet from encoder\n");
+            lav_throw_msg("avcodec_receive_packet", ret);
             return ret;
         }
 
@@ -294,7 +298,7 @@ int encode_frame(const PXMediaContext* ctx, AVFrame* frame, AVPacket* packet, un
 
         ret = av_interleaved_write_frame(ctx->ofmt_ctx, packet);
         if (ret < 0) {
-            av_log(NULL, AV_LOG_ERROR, "Error writing packet to output file\n");
+            lav_throw_msg("av_interleaved_write_frame", ret);
             return ret;
         }
     }
