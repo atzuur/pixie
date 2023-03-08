@@ -1,10 +1,6 @@
 #include "coding.h"
 #include "log.h"
 
-static inline void lav_throw_msg(const char* func, int err) {
-    px_log(PX_LOG_ERROR, "%s() failed at %s:%d : %s (%d)\n", func, __FILE__, __LINE__, av_err2str(err), err);
-}
-
 void px_mediactx_deinit(PXMediaContext* ctx) {
 
     if (ctx->ifmt_ctx) {

@@ -2,6 +2,10 @@
 
 #include "pixie.h"
 
+static inline void lav_throw_msg(const char* func, int err) {
+    px_log(PX_LOG_ERROR, "%s() failed at %s:%d : code %d\n", func, __FILE__, __LINE__, err);
+}
+
 void px_mediactx_deinit(PXMediaContext* ctx);
 
 int init_input(PXMediaContext* ctx, const char* filename);

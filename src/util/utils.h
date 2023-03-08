@@ -24,7 +24,7 @@ int create_folder(char* path);
 // sleep for `ms` milliseconds
 void sleep_ms(int ms);
 
-// assert with optional block on failure
+// assert with block on failure
 #define assert_or(x) for (; !(x); assert(x))
 
 void oom(size_t alloc_size);
@@ -55,12 +55,16 @@ static inline void free_s(void* ptr) {
 
 #if defined(__unix__) || (defined(__APPLE__) && defined(__MACH__))
 #include <errno.h>
+#include <unistd.h>
 
 #define PATH_SEP "/"
 #define last_errcode() errno
 
 #elif defined(_WIN32)
+#include <io.h> // _access
 #include <windows.h>
+#define F_OK 0
+
 #define PATH_SEP "\\"
 #define last_errcode() GetLastError()
 #endif
@@ -74,4 +78,8 @@ static inline void throw_msg(const char* func, int err) {
     last_errstr(errstr, err);
 
     fprintf(stderr, "%s() failed at %s:%d : %s (%d)\n", func, __FILE__, __LINE__, errstr, err);
+}
+
+static inline bool file_exists(char* path) {
+    return access(path, F_OK) == 0;
 }

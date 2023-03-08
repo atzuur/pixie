@@ -1,5 +1,6 @@
 #include "pixie.h"
 #include "coding.h"
+#include "util/utils.h"
 
 int px_main(PXSettings s) {
 
@@ -13,10 +14,23 @@ int px_main(PXSettings s) {
 
     for (pxc.input_idx = 0; pxc.input_idx < pxc.settings.n_input_files; pxc.input_idx++) {
 
+        char* current_file = pxc.settings.input_files[pxc.input_idx];
+        if (!file_exists(current_file)) {
+            px_log(PX_LOG_ERROR, "File \"%s\" does not exist\n", current_file);
+            ret = AVERROR(ENOENT);
+            break;
+        }
+
+        if (strcmp(current_file, pxc.settings.output_file) == 0) {
+            px_log(PX_LOG_ERROR, "Input and output files cannot be the same\n");
+            ret = AVERROR(EINVAL);
+            break;
+        }
+
         px_thrd_launch(&pxc.transc_thread);
 
         while (!pxc.transc_thread.done) {
-            sleep_ms(5);
+            sleep_ms(10);
             px_log(PX_LOG_INFO, "Decoded %lu frames, dropped %lu frames, encoded %lu frames\r",
                    pxc.frames_decoded, pxc.decoded_frames_dropped, pxc.frames_output);
         }
@@ -27,8 +41,8 @@ int px_main(PXSettings s) {
         px_thrd_join(&pxc.transc_thread, &transc_ret);
 
         if (transc_ret) {
-            px_log(PX_LOG_ERROR, "Error occurred while processing file %s (stream index %d)\n",
-                   pxc.settings.input_files[pxc.input_idx], pxc.stream_idx);
+            px_log(PX_LOG_ERROR, "Error occurred while processing file \"%s\" (stream index %d)\n",
+                   current_file, pxc.stream_idx);
             ret = transc_ret;
             break;
         }
@@ -45,14 +59,15 @@ int px_transcode(PXContext* pxc) {
     AVFrame* frame = NULL;
     AVPacket* packet = NULL;
 
-#define FINISH(r)                   \
-    pxc->transc_thread.done = true; \
-    return r;
+#define FINISH(r)                       \
+    do {                                \
+        pxc->transc_thread.done = true; \
+        return r;                       \
+    } while (0)
 
     ret = px_init_transcode(pxc, &packet, &frame);
-    if (ret) {
+    if (ret)
         FINISH(ret);
-    }
 
     while (1) {
 
@@ -61,7 +76,7 @@ int px_transcode(PXContext* pxc) {
             ret = 0;
             break;
         } else if (ret < 0) {
-            px_log(PX_LOG_ERROR, "Failed to read frame: %s (%d)\n", av_err2str(ret), ret);
+            lav_throw_msg("av_read_frame", ret);
             FINISH(ret);
         }
 
@@ -79,7 +94,6 @@ int px_transcode(PXContext* pxc) {
                 ret = 0;
                 break;
             } else if (ret < 0) {
-                px_log(PX_LOG_ERROR, "Failed to decode frame: %s (%d)\n", av_err2str(ret), ret);
                 FINISH(ret);
             }
 
@@ -97,7 +111,6 @@ int px_transcode(PXContext* pxc) {
                 ret = 0;
                 break;
             } else if (ret < 0) {
-                px_log(PX_LOG_ERROR, "Failed to encode frame: %s (%d)\n", av_err2str(ret), ret);
                 FINISH(ret);
             }
 
@@ -106,7 +119,7 @@ int px_transcode(PXContext* pxc) {
         } else {
             ret = av_interleaved_write_frame(pxc->media_ctx.ofmt_ctx, packet);
             if (ret < 0) {
-                px_log(PX_LOG_ERROR, "Failed to write copied frame: %s (%d)\n", av_err2str(ret), ret);
+                lav_throw_msg("av_interleaved_write_frame", ret);
                 FINISH(ret);
             }
         }
@@ -117,14 +130,14 @@ int px_transcode(PXContext* pxc) {
     for (unsigned i = 0; i < pxc->media_ctx.ifmt_ctx->nb_streams; i++) {
         ret = flush_encoder(&pxc->media_ctx, packet, i);
         if (ret < 0 && ret != AVERROR_EOF) {
-            px_log(PX_LOG_ERROR, "Failed to flush encoder: %s (%d)\n", av_err2str(ret), ret);
+            px_log(PX_LOG_ERROR, "Failed to flush encoder\n");
             FINISH(ret);
         }
     }
 
     ret = av_write_trailer(pxc->media_ctx.ofmt_ctx);
     if (ret < 0)
-        px_log(PX_LOG_ERROR, "Failed to write output file trailer: %s (%d)\n", av_err2str(ret), ret);
+        lav_throw_msg("av_write_trailer", ret);
 
     FINISH(ret);
 
@@ -146,13 +159,13 @@ int px_init_transcode(PXContext* pxc, AVPacket** packet, AVFrame** frame) {
 
     ret = init_input(&pxc->media_ctx, infile);
     if (ret) {
-        px_log(PX_LOG_ERROR, "Failed to open input file %s: %s (%d)\n", infile, av_err2str(ret), ret);
+        px_log(PX_LOG_ERROR, "Failed to open input file \"%s\": %s (%d)\n", infile, av_err2str(ret), ret);
         goto end;
     }
 
     ret = init_output(&pxc->media_ctx, outfile, &pxc->settings);
     if (ret) {
-        px_log(PX_LOG_ERROR, "Failed to open output file %s: %s (%d)\n", outfile, av_err2str(ret), ret);
+        px_log(PX_LOG_ERROR, "Failed to open output file \"%s\": %s (%d)\n", outfile, av_err2str(ret), ret);
         goto end;
     }
 
@@ -333,7 +346,7 @@ int px_init_settings(int argc, char** argv, PXSettings* s) {
         char last = s->output_file[strlen(s->output_file) - 1];
         if (last != *PATH_SEP) {
             // +1 for the path sep, +1 for the null terminator
-            s->output_file = realloc(s->output_file, strlen(s->output_file) + 2);
+            s->output_file = realloc(s->output_file, strlen(s->output_file) + 1 + 1);
             strcat(s->output_file, PATH_SEP);
         }
 
