@@ -44,13 +44,15 @@ static inline bool is_int(char* str) {
     return true;
 }
 
+// if `*ptr` is not NULL, free it and set it to NULL
 static inline void free_s(void* ptr) {
 
     void** p = (void**)ptr;
 
-    if (*p)
+    if (*p) {
         free(*p);
-    *p = NULL;
+        *p = NULL;
+    }
 }
 
 #if defined(__unix__) || (defined(__APPLE__) && defined(__MACH__))
@@ -67,6 +69,9 @@ static inline void free_s(void* ptr) {
 
 #define PATH_SEP "\\"
 #define last_errcode() GetLastError()
+
+#else
+#error "Unsupported platform"
 #endif
 
 // automated error message
