@@ -68,7 +68,7 @@ int px_init_transcode(PXContext* pxc, AVPacket** packet, AVFrame** frame);
 int px_transcode(PXContext* pxc);
 int px_parse_args(int argc, char** argv, PXSettings* s);
 int px_init_settings(int argc, char** argv, PXSettings* s);
-bool px_should_skip_frame(int64_t pts);
+bool px_should_skip_frame(AVFrame* frame);
 void px_print_info(const char* prog_name, bool full);
 void px_free_ctx(PXContext* pxc);
 void px_free_settings(PXSettings* s);

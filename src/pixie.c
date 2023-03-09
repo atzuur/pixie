@@ -1,6 +1,5 @@
 #include "pixie.h"
 #include "coding.h"
-#include "util/utils.h"
 
 int px_main(PXSettings s) {
 
@@ -99,7 +98,7 @@ int px_transcode(PXContext* pxc) {
 
             av_packet_unref(packet);
 
-            if (px_should_skip_frame(frame->pts)) {
+            if (px_should_skip_frame(frame)) {
                 pxc->decoded_frames_dropped++;
                 continue;
             }
@@ -186,9 +185,13 @@ end:
     return ret;
 }
 
-bool px_should_skip_frame(int64_t pts) {
+bool px_should_skip_frame(AVFrame* frame) {
+
+    if (frame->flags & AV_FRAME_FLAG_DISCARD)
+        return true;
 
     static int64_t last_pts = INT_MIN; // avoid skipping the first frame
+    int64_t pts = frame->pts;
 
     if (pts != AV_NOPTS_VALUE && last_pts >= pts) {
         return true;
