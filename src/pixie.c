@@ -2,8 +2,21 @@
 #include "cli.h"
 #include "coding.h"
 
-// fwd declare because not part of public api
-bool px_should_skip_frame(AVFrame* frame);
+static bool should_skip_frame(AVFrame* frame) {
+
+    if (frame->flags & AV_FRAME_FLAG_DISCARD)
+        return true;
+
+    static int64_t last_pts = INT_MIN; // avoid skipping the first frame unintentionally
+    int64_t pts = frame->pts;
+
+    if (pts != AV_NOPTS_VALUE && last_pts >= pts) {
+        return true;
+    } else {
+        last_pts = pts;
+        return false;
+    }
+}
 
 int px_main(PXSettings s) {
 
@@ -102,7 +115,7 @@ int px_transcode(PXContext* pxc) {
 
             av_packet_unref(packet);
 
-            if (px_should_skip_frame(frame)) {
+            if (should_skip_frame(frame)) {
                 pxc->decoded_frames_dropped++;
                 continue;
             }
@@ -187,22 +200,6 @@ int px_init_transcode(PXContext* pxc, AVPacket** packet, AVFrame** frame) {
 
 end:
     return ret;
-}
-
-bool px_should_skip_frame(AVFrame* frame) {
-
-    if (frame->flags & AV_FRAME_FLAG_DISCARD)
-        return true;
-
-    static int64_t last_pts = INT_MIN; // avoid skipping the first frame
-    int64_t pts = frame->pts;
-
-    if (pts != AV_NOPTS_VALUE && last_pts >= pts) {
-        return true;
-    } else {
-        last_pts = pts;
-        return false;
-    }
 }
 
 int px_init_settings(int argc, char** argv, PXSettings* s) {
