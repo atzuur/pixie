@@ -61,3 +61,7 @@ dkms.conf
 *.ogg
 *.mov
 *.webm
+*.ppm
+
+# misc
+test*

@@ -64,11 +64,11 @@ typedef struct PXContext {
 } PXContext;
 
 int px_main(PXSettings s);
-int px_init_transcode(PXContext* pxc, AVPacket** packet, AVFrame** frame);
+
+int px_transcode_init(PXContext* pxc, AVPacket** packet, AVFrame** frame);
 int px_transcode(PXContext* pxc);
-int px_parse_args(int argc, char** argv, PXSettings* s);
-int px_init_settings(int argc, char** argv, PXSettings* s);
-bool px_should_skip_frame(AVFrame* frame);
-void px_print_info(const char* prog_name, bool full);
-void px_free_ctx(PXContext* pxc);
-void px_free_settings(PXSettings* s);
+
+void px_ctx_free(PXContext* pxc);
+
+int px_settings_init(int argc, char** argv, PXSettings* s);
+void px_settings_free(PXSettings* s);

@@ -44,6 +44,10 @@ static inline bool is_int(char* str) {
     return true;
 }
 
+static inline int ceil_div(int a, int b) {
+    return 1 + (a - 1) / b;
+}
+
 // if `*ptr` is not NULL, free it and set it to NULL
 static inline void free_s(void* ptr) {
 

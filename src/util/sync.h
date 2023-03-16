@@ -71,18 +71,6 @@ typedef struct PXMutex {
 #endif
 } PXMutex;
 
-typedef struct PXCond {
-#ifdef C11_THREADS
-    cnd_t cond;
-#endif
-#ifdef WIN32_THREADS
-    HANDLE cond;
-#endif
-#ifdef POSIX_THREADS
-    pthread_cond_t cond;
-#endif
-} PXCond;
-
 // launch thread with function `thread->func` and arguments `thread->args`
 void px_thrd_launch(PXThread* thread);
 

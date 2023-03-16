@@ -1,7 +1,7 @@
 #include "coding.h"
 #include "log.h"
 
-void px_mediactx_deinit(PXMediaContext* ctx) {
+void px_mediactx_free(PXMediaContext* ctx) {
 
     if (ctx->ifmt_ctx) {
 
