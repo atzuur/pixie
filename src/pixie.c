@@ -160,7 +160,7 @@ int px_transcode(PXContext* pxc) {
 #undef FINISH
 }
 
-int px_init_transcode(PXContext* pxc, AVPacket** packet, AVFrame** frame) {
+int px_transcode_init(PXContext* pxc, AVPacket** packet, AVFrame** frame) {
 
     int ret = 0;
 
@@ -202,7 +202,7 @@ end:
     return ret;
 }
 
-int px_init_settings(int argc, char** argv, PXSettings* s) {
+int px_settings_init(int argc, char** argv, PXSettings* s) {
 
     *s = (PXSettings) {0};
 
@@ -243,7 +243,7 @@ int px_init_settings(int argc, char** argv, PXSettings* s) {
     return 0;
 }
 
-void px_free_ctx(PXContext* pxc) {
+void px_ctx_free(PXContext* pxc) {
 
     px_mediactx_free(&pxc->media_ctx);
     px_settings_free(&pxc->settings);
