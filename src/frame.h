@@ -24,8 +24,9 @@ typedef struct PXFrame {
     int width;
     int height;
 
-    size_t sz_bytes;
-    size_t bytes_per_pix;
+    // bytes per pixel component, e.g. 1 for 8-bit, 2 for 16-bit
+    // padding is included (10-bit will be 2)
+    size_t bytes_per_comp;
 
     int64_t pts;
     AVRational timebase;
