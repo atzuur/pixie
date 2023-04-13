@@ -46,6 +46,9 @@ void px_frame_free(PXFrame** frame);
 
 void px_frame_copy(PXFrame* dest, const PXFrame* src);
 
+size_t px_plane_size(const PXFrame* frame, int idx);
+size_t px_frame_size(const PXFrame* frame);
+
 int px_fb_init(PXFrameBuffer* fb, int max_frames, int width, int height, enum AVPixelFormat pix_fmt);
 void px_fb_free(PXFrameBuffer* fb);
 

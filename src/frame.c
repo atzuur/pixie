@@ -100,7 +100,7 @@ void px_frame_free(PXFrame** frame) {
 
 void px_frame_copy(PXFrame* dest, const PXFrame* src) {
 
-    assert(dest->num_planes == src->num_planes);
+    assert(src->pix_fmt == dest->pix_fmt);
 
     *dest = *src;
 
@@ -119,6 +119,20 @@ void px_frame_copy(PXFrame* dest, const PXFrame* src) {
             dest_plane->data[line] = src_plane->data_flat + stride * line;
         }
     }
+}
+
+size_t px_plane_size(const PXFrame* frame, int idx) {
+    return frame->planes[idx]->width * frame->planes[idx]->height * frame->bytes_per_comp;
+}
+
+size_t px_frame_size(const PXFrame* frame) {
+
+    size_t size = 0;
+    for (int i = 0; i < frame->num_planes; i++) {
+        size += px_plane_size(frame, i);
+    }
+
+    return size;
 }
 
 int px_fb_init(PXFrameBuffer* fb, int max_frames, int width, int height, enum AVPixelFormat pix_fmt) {
