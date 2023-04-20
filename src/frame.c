@@ -44,6 +44,9 @@ PXFrame* px_frame_new(int width, int height, enum AVPixelFormat pix_fmt) {
     int chroma_width = AV_CEIL_RSHIFT(width, fmt_desc->log2_chroma_w);
     int chroma_height = AV_CEIL_RSHIFT(height, fmt_desc->log2_chroma_h);
 
+    frame->width = width;
+    frame->height = height;
+
     for (int i = 0; i < n_planes; i++) {
 
         frame->planes[i] = calloc(1, sizeof(PXVideoPlane));
