@@ -17,16 +17,22 @@ typedef struct PXVideoPlane {
 
 typedef struct PXFrame {
 
-    PXVideoPlane* planes[4]; // 4 planes max
+    // 4 planes max
+    PXVideoPlane* planes[4];
     int num_planes;
+
     enum AVPixelFormat pix_fmt;
 
     int width;
     int height;
 
+    // bits per pixel component, e.g. 8, 10, 16 (padding not included)
+    // equal to bits per pixel for rgb formats (e.g. 24)
+    int bits_per_comp;
+
     // bytes per pixel component, e.g. 1 for 8-bit, 2 for 16-bit
     // padding is included (10-bit will be 2)
-    size_t bytes_per_comp;
+    int bytes_per_comp;
 
     int64_t pts;
     AVRational timebase;

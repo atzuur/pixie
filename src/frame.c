@@ -21,14 +21,23 @@ PXFrame* px_frame_new(int width, int height, enum AVPixelFormat pix_fmt) {
         return NULL;
     }
 
+    frame->width = width;
+    frame->height = height;
+    frame->pix_fmt = pix_fmt;
+
+    frame->pts = 0;
+    frame->timebase = (AVRational) {0, 1};
+
     const AVPixFmtDescriptor* fmt_desc = av_pix_fmt_desc_get(pix_fmt);
     if (!fmt_desc) {
         px_log(PX_LOG_ERROR, "Invalid pixel format: %d\n", pix_fmt);
         goto fail;
     }
 
-    // any pixel format that is not RGB or planar, endianness is irrelevant
+    // any pixel format that is not RGB or planar is unsupported, endianness is irrelevant
+    // also no bayer because wtf is that
     const int unsupported_fmts = ~(AV_PIX_FMT_FLAG_RGB | AV_PIX_FMT_FLAG_PLANAR | AV_PIX_FMT_FLAG_BE);
+
     if (fmt_desc->flags & unsupported_fmts) {
         px_log(PX_LOG_ERROR, "Unsupported pixel format: %d\n", pix_fmt);
         goto fail;
@@ -37,7 +46,12 @@ PXFrame* px_frame_new(int width, int height, enum AVPixelFormat pix_fmt) {
     int n_planes = av_pix_fmt_count_planes(pix_fmt);
     frame->num_planes = n_planes;
 
-    int bytes_per_comp = ceil_div(av_get_padded_bits_per_pixel(fmt_desc), CHAR_BIT);
+    // rgb formats can have a variable number of bits per component
+    // for planar formats, all components have the same number of bits
+    int bits_per_comp = fmt_desc->flags & AV_PIX_FMT_FLAG_RGB ? av_get_padded_bits_per_pixel(fmt_desc)
+                                                              : fmt_desc->comp[0].depth;
+    int bytes_per_comp = ceil_div(bits_per_comp, CHAR_BIT);
+
     frame->bytes_per_comp = bytes_per_comp;
 
     int luma_idx = get_luma_idx(*fmt_desc);
