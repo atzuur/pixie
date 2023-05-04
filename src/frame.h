@@ -27,10 +27,9 @@ typedef struct PXFrame {
     int height;
 
     // bits per pixel component, e.g. 8, 10, 16 (padding not included)
-    // equal to bits per pixel for rgb formats (e.g. 24)
     int bits_per_comp;
 
-    // bytes per pixel component, e.g. 1 for 8-bit, 2 for 16-bit
+    // bytes per pixel component, e.g. 1 for 8-bit, 2 for 16-bit,
     // padding is included (10-bit will be 2)
     int bytes_per_comp;
 

@@ -7,7 +7,6 @@
 #include <libavutil/log.h>
 
 typedef enum PxLogLevel {
-
     PX_LOG_NONE = -1,
     PX_LOG_QUIET,
     PX_LOG_WARN,
@@ -15,7 +14,6 @@ typedef enum PxLogLevel {
     PX_LOG_INFO,
     PX_LOG_VERBOSE,
     PX_LOG_COUNT, // number of log levels (not a valid log level)
-
 } PXLogLevel;
 
 // should
@@ -25,7 +23,6 @@ extern const char* const px_log_names[];
 extern const int px_log_colors[];
 
 #define PX_LOG_C(c) (px_log_color(c, (char[16]) {0}))
-
 #define PX_RESET "\033[0m"
 
 // writes 16 chars at most
@@ -60,9 +57,9 @@ static inline int px_loglevel_to_av(PXLogLevel level) {
 }
 
 static inline void px_log_set_level(PXLogLevel level) {
-
     av_log_set_level(px_loglevel_to_av(level));
     px_global_loglevel = level;
 }
 
-void px_log(PXLogLevel level, const char* msg, ...);
+#define px_log(level, msg, ...) px_log_msg(level, "%s(): " msg, __func__, ##__VA_ARGS__)
+void px_log_msg(PXLogLevel level, const char* msg, ...);

@@ -6,11 +6,6 @@
 
 #include <stdlib.h>
 
-// -1 if no luma present
-static int get_luma_idx(AVPixFmtDescriptor desc) {
-    return (desc.flags & AV_PIX_FMT_FLAG_RGB) ? -1 : 0;
-}
-
 PXFrame* px_frame_new(int width, int height, enum AVPixelFormat pix_fmt) {
 
     assert(width > 0), assert(height > 0);
@@ -30,31 +25,25 @@ PXFrame* px_frame_new(int width, int height, enum AVPixelFormat pix_fmt) {
 
     const AVPixFmtDescriptor* fmt_desc = av_pix_fmt_desc_get(pix_fmt);
     if (!fmt_desc) {
-        px_log(PX_LOG_ERROR, "Invalid pixel format: %d\n", pix_fmt);
+        px_log(PX_LOG_ERROR, "Unknown pixel format: %d\n", pix_fmt);
         goto fail;
     }
 
-    // any pixel format that is not RGB or planar is unsupported, endianness is irrelevant
-    // also no bayer because wtf is that
-    const int unsupported_fmts = ~(AV_PIX_FMT_FLAG_RGB | AV_PIX_FMT_FLAG_PLANAR | AV_PIX_FMT_FLAG_BE);
-
-    if (fmt_desc->flags & unsupported_fmts) {
-        px_log(PX_LOG_ERROR, "Unsupported pixel format: %d\n", pix_fmt);
+    // any pixel format that is not planar is unsupported
+    if (!(fmt_desc->flags & AV_PIX_FMT_FLAG_PLANAR)) {
+        px_log(PX_LOG_ERROR, "Unsupported pixel format: %s\n", av_get_pix_fmt_name(pix_fmt));
         goto fail;
     }
 
     int n_planes = av_pix_fmt_count_planes(pix_fmt);
     frame->num_planes = n_planes;
 
-    // rgb formats can have a variable number of bits per component
-    // for planar formats, all components have the same number of bits
-    int bits_per_comp = fmt_desc->flags & AV_PIX_FMT_FLAG_RGB ? av_get_padded_bits_per_pixel(fmt_desc)
-                                                              : fmt_desc->comp[0].depth;
+    // all components have the same number of bits in planar formats
+    int bits_per_comp = fmt_desc->comp[0].depth;
     int bytes_per_comp = ceil_div(bits_per_comp, CHAR_BIT);
-
     frame->bytes_per_comp = bytes_per_comp;
+    frame->bits_per_comp = bits_per_comp;
 
-    int luma_idx = get_luma_idx(*fmt_desc);
     int chroma_width = AV_CEIL_RSHIFT(width, fmt_desc->log2_chroma_w);
     int chroma_height = AV_CEIL_RSHIFT(height, fmt_desc->log2_chroma_h);
 
@@ -66,8 +55,9 @@ PXFrame* px_frame_new(int width, int height, enum AVPixelFormat pix_fmt) {
             goto fail;
         }
 
-        int plane_width = i == luma_idx ? width : chroma_width;
-        int plane_height = i == luma_idx ? height : chroma_height;
+        // luma is 0
+        int plane_width = i == 0 ? width : chroma_width;
+        int plane_height = i == 0 ? height : chroma_height;
 
         size_t plane_sz = plane_width * plane_height * bytes_per_comp;
         uint8_t* data = calloc(1, plane_sz);
@@ -182,8 +172,7 @@ void px_fb_free(PXFrameBuffer* fb) {
 int px_fb_add(PXFrameBuffer* fb, const PXFrame* frame) {
 
     if (fb->num_frames >= fb->max_frames) {
-        px_log(PX_LOG_ERROR, "px_fb_add(): Frame buffer at %p is full (%d/%d)\n", fb, fb->num_frames,
-               fb->max_frames);
+        px_log(PX_LOG_ERROR, "Frame buffer at %p is full (%d/%d)\n", fb, fb->num_frames, fb->max_frames);
         return AVERROR(ENOMEM);
     }
 

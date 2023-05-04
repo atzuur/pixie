@@ -62,6 +62,3 @@ dkms.conf
 *.mov
 *.webm
 *.ppm
-
-# misc
-test*

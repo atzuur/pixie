@@ -9,7 +9,7 @@ const int px_log_colors[PX_LOG_COUNT] = {
     0, 214, 196, 255, 221,
 };
 
-void px_log(PXLogLevel level, const char* msg, ...) {
+void px_log_msg(PXLogLevel level, const char* msg, ...) {
 
     if (level > px_global_loglevel)
         return;
