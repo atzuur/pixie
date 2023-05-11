@@ -1,6 +1,7 @@
 #include "pixie.h"
 #include "cli.h"
 #include "coding.h"
+#include "frame.h"
 
 static bool should_skip_frame(AVFrame* frame) {
 
@@ -10,12 +11,11 @@ static bool should_skip_frame(AVFrame* frame) {
     static int64_t last_pts = INT_MIN; // avoid skipping the first frame unintentionally
     int64_t pts = frame->pts;
 
-    if (pts != AV_NOPTS_VALUE && last_pts >= pts) {
+    if (pts != AV_NOPTS_VALUE && last_pts >= pts)
         return true;
-    } else {
-        last_pts = pts;
-        return false;
-    }
+
+    last_pts = pts;
+    return false;
 }
 
 int px_main(PXSettings s) {
@@ -47,7 +47,7 @@ int px_main(PXSettings s) {
 
         while (!pxc.transc_thread.done) {
             sleep_ms(10);
-            px_log(PX_LOG_INFO, "Decoded %lu frames, dropped %lu frames, encoded %lu frames\r",
+            px_log(PX_LOG_PROGRESS, "Decoded %lu frames, dropped %lu frames, encoded %lu frames\r",
                    pxc.frames_decoded, pxc.decoded_frames_dropped, pxc.frames_output);
         }
 
@@ -121,6 +121,8 @@ int px_transcode(PXContext* pxc) {
             }
 
             pxc->frames_decoded++;
+
+            px_frame_assert_correctly_converted(frame, px_frame_from_av(frame));
 
             ret = encode_frame(&pxc->media_ctx, frame, packet, pxc->stream_idx);
             if (ret == AVERROR_EOF) {
@@ -245,7 +247,7 @@ int px_settings_init(int argc, char** argv, PXSettings* s) {
 
 void px_ctx_free(PXContext* pxc) {
 
-    px_mediactx_free(&pxc->media_ctx);
+    px_media_ctx_free(&pxc->media_ctx);
     px_settings_free(&pxc->settings);
 }
 

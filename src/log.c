@@ -1,12 +1,12 @@
 #include "log.h"
 
-PXLogLevel px_global_loglevel = PX_LOG_ERROR;
+PXLogLevel px_global_loglevel = PX_LOG_PROGRESS; // default
 
 const char* const px_log_names[] = {
-    "quiet", "warn", "error", "info", "verbose",
+    "quiet", "error", "progress", "warn", "info", "verbose",
 };
 const int px_log_colors[PX_LOG_COUNT] = {
-    0, 214, 196, 255, 221,
+    0, 196, 229, 214, 255, 221,
 };
 
 void px_log_msg(PXLogLevel level, const char* msg, ...) {

@@ -1,4 +1,5 @@
 #include "cli.h"
+#include "log.h"
 
 void px_print_info(const char* prog_name, bool full) {
 
@@ -23,8 +24,7 @@ int px_parse_args(int argc, char** argv, PXSettings* s) {
     int i;
     int ret = 0;
 
-    *s = (PXSettings) {0};
-    s->loglevel = PX_LOG_INFO;
+    *s = (PXSettings) {.loglevel = PX_LOG_NONE};
 
     argc--;
 

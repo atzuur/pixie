@@ -1,5 +1,10 @@
+#pragma once
+
+#include <libavutil/frame.h>
 #include <libavutil/pixfmt.h>
 #include <libavutil/rational.h>
+
+#include <stdbool.h>
 #include <stddef.h>
 
 typedef struct PXVideoPlane {
@@ -54,7 +59,10 @@ void px_frame_copy(PXFrame* dest, const PXFrame* src);
 size_t px_plane_size(const PXFrame* frame, int idx);
 size_t px_frame_size(const PXFrame* frame);
 
-int px_fb_init(PXFrameBuffer* fb, int max_frames, int width, int height, enum AVPixelFormat pix_fmt);
+PXFrame* px_frame_from_av(const AVFrame* avframe);
+bool px_frame_assert_correctly_converted(const AVFrame* src, const PXFrame* dest);
+
+int px_fb_init(PXFrameBuffer* fb, int width, int height, enum AVPixelFormat pix_fmt);
 void px_fb_free(PXFrameBuffer* fb);
 
 int px_fb_add(PXFrameBuffer* fb, const PXFrame* frame);

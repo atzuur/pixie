@@ -6,7 +6,7 @@ static inline void lav_throw_msg(const char* func, int err) {
     px_log(PX_LOG_ERROR, "%s() failed at %s:%d : code %d\n", func, __FILE__, __LINE__, err);
 }
 
-void px_mediactx_free(PXMediaContext* ctx);
+void px_media_ctx_free(PXMediaContext* ctx);
 
 int init_input(PXMediaContext* ctx, const char* filename);
 int init_output(PXMediaContext* ctx, const char* filename, PXSettings* s);

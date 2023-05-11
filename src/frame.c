@@ -139,17 +139,65 @@ size_t px_frame_size(const PXFrame* frame) {
     return size;
 }
 
-int px_fb_init(PXFrameBuffer* fb, int max_frames, int width, int height, enum AVPixelFormat pix_fmt) {
+PXFrame* px_frame_from_av(const AVFrame* avframe) {
 
-    assert(max_frames > 0);
+    PXFrame* frame = px_frame_new(avframe->width, avframe->height, avframe->format);
+    if (!frame) {
+        return NULL;
+    }
 
-    fb->frames = calloc(max_frames, sizeof(PXFrame*));
+    for (int i = 0; i < frame->num_planes; i++) {
+        for (int line = 0; line < frame->planes[i]->height; line++) {
+
+            size_t av_stride = avframe->linesize[i];
+            size_t stride = frame->planes[i]->width * frame->bytes_per_comp;
+
+            uint8_t* dest = frame->planes[i]->data_flat + stride * line;
+            uint8_t* src = avframe->data[i] + av_stride * line;
+
+            memcpy(dest, src, stride);
+        }
+    }
+
+    frame->pts = avframe->pts;
+    frame->timebase = avframe->time_base;
+
+    return frame;
+}
+
+bool px_frame_assert_correctly_converted(const AVFrame* src, const PXFrame* dest) {
+
+    assert(src->width == dest->width);
+    assert(src->height == dest->height);
+    assert(src->format == dest->pix_fmt);
+
+    for (int i = 0; i < dest->num_planes; i++) {
+        for (int line = 0; line < dest->planes[i]->height; line++) {
+
+            size_t av_stride = src->linesize[i];
+            size_t stride = dest->planes[i]->width * dest->bytes_per_comp;
+
+            uint8_t* dest_line = dest->planes[i]->data_flat + stride * line;
+            uint8_t* src_line = src->data[i] + av_stride * line;
+
+            assert(memcmp(dest_line, src_line, stride) == 0);
+        }
+    }
+
+    return true;
+}
+
+int px_fb_init(PXFrameBuffer* fb, int width, int height, enum AVPixelFormat pix_fmt) {
+
+    assert(fb->max_frames > 0);
+
+    fb->frames = calloc(fb->max_frames, sizeof(PXFrame*));
     if (!fb->frames) {
-        oom(max_frames * sizeof(PXFrame*));
+        oom(fb->max_frames * sizeof(PXFrame*));
         return AVERROR(ENOMEM);
     }
 
-    for (int i = 0; i < max_frames; i++) {
+    for (int i = 0; i < fb->max_frames; i++) {
         fb->frames[i] = px_frame_new(width, height, pix_fmt);
         if (!fb->frames[i]) {
             px_fb_free(fb);
@@ -158,7 +206,7 @@ int px_fb_init(PXFrameBuffer* fb, int max_frames, int width, int height, enum AV
     }
 
     fb->num_frames = 0;
-    fb->max_frames = max_frames;
+    fb->max_frames = fb->max_frames;
 
     return 0;
 }

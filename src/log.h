@@ -8,15 +8,15 @@
 
 typedef enum PxLogLevel {
     PX_LOG_NONE = -1,
-    PX_LOG_QUIET,
-    PX_LOG_WARN,
-    PX_LOG_ERROR,
-    PX_LOG_INFO,
-    PX_LOG_VERBOSE,
+    PX_LOG_QUIET, // no output
+    PX_LOG_ERROR, // errors only
+    PX_LOG_PROGRESS, // + progress info (default)
+    PX_LOG_WARN, // + warnings
+    PX_LOG_INFO, // + misc. info
+    PX_LOG_VERBOSE, // + everything else
     PX_LOG_COUNT, // number of log levels (not a valid log level)
 } PXLogLevel;
 
-// should
 extern PXLogLevel px_global_loglevel;
 
 extern const char* const px_log_names[];
@@ -31,12 +31,12 @@ static inline char* px_log_color(int c, char* buf) {
     return buf;
 }
 
-static inline int px_loglevel_from_str(const char* str) {
+static inline PXLogLevel px_loglevel_from_str(const char* str) {
     for (int i = 0; i < PX_LOG_COUNT; i++) {
         if (strcmp(px_log_names[i], str) == 0)
-            return i;
+            return (PXLogLevel)i;
     }
-    return -1;
+    return PX_LOG_NONE;
 }
 
 static inline int px_loglevel_to_av(PXLogLevel level) {
@@ -57,6 +57,9 @@ static inline int px_loglevel_to_av(PXLogLevel level) {
 }
 
 static inline void px_log_set_level(PXLogLevel level) {
+    if (level == PX_LOG_NONE)
+        level = PX_LOG_PROGRESS;
+
     av_log_set_level(px_loglevel_to_av(level));
     px_global_loglevel = level;
 }
