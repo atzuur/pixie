@@ -12,16 +12,15 @@ void write_frame(FILE* out_file, const PXFrame* frame, int frame_num) {
     fprintf(out_file, "FRAME\n");
 
     for (int p = 0; p < 3; p++) {
-        PXVideoPlane* plane = frame->planes[p];
+        const PXVideoPlane* plane = &frame->planes[p];
 
         for (int y = 0; y < plane->height; y++) {
             for (int x = 0; x < plane->width; x++) {
                 plane->data[y][x] = x * y + p * 100 + frame_num * 10;
             }
-        }
 
-        size_t sz_pixels = plane->width * plane->height;
-        fwrite(plane->data_flat, frame->bytes_per_comp, sz_pixels, out_file);
+            fwrite(plane->data[y], frame->bytes_per_comp, plane->width, out_file);
+        }
     }
 }
 

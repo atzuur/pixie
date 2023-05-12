@@ -75,10 +75,11 @@ int px_transcode(PXContext* pxc) {
     AVFrame* frame = NULL;
     AVPacket* packet = NULL;
 
-#define FINISH(r)                       \
-    do {                                \
-        pxc->transc_thread.done = true; \
-        return r;                       \
+#define FINISH(r)                           \
+    do {                                    \
+        px_transcode_free(&packet, &frame); \
+        pxc->transc_thread.done = true;     \
+        return r;                           \
     } while (0)
 
     ret = px_transcode_init(pxc, &packet, &frame);
@@ -98,43 +99,12 @@ int px_transcode(PXContext* pxc) {
 
         pxc->stream_idx = packet->stream_index;
 
+        PXStreamContext* stc = &pxc->media_ctx.stream_ctx_vec[pxc->stream_idx];
+
         enum AVMediaType stream_type =
             pxc->media_ctx.ifmt_ctx->streams[pxc->stream_idx]->codecpar->codec_type;
 
-        PXStreamContext* stc = &pxc->media_ctx.stream_ctx_vec[pxc->stream_idx];
-
-        if (stream_type == AVMEDIA_TYPE_VIDEO) {
-
-            ret = decode_frame(stc, frame, packet);
-            if (ret == AVERROR_EOF) {
-                ret = 0;
-                break;
-            } else if (ret < 0) {
-                FINISH(ret);
-            }
-
-            av_packet_unref(packet);
-
-            if (should_skip_frame(frame)) {
-                pxc->decoded_frames_dropped++;
-                continue;
-            }
-
-            pxc->frames_decoded++;
-
-            px_frame_assert_correctly_converted(frame, px_frame_from_av(frame));
-
-            ret = encode_frame(&pxc->media_ctx, frame, packet, pxc->stream_idx);
-            if (ret == AVERROR_EOF) {
-                ret = 0;
-                break;
-            } else if (ret < 0) {
-                FINISH(ret);
-            }
-
-            av_frame_unref(frame);
-
-        } else {
+        if (stream_type != AVMEDIA_TYPE_VIDEO) {
             ret = av_interleaved_write_frame(pxc->media_ctx.ofmt_ctx, packet);
             if (ret < 0) {
                 lav_throw_msg("av_interleaved_write_frame", ret);
@@ -142,6 +112,35 @@ int px_transcode(PXContext* pxc) {
             }
         }
 
+        ret = decode_frame(stc, frame, packet);
+        if (ret == AVERROR_EOF) {
+            ret = 0;
+            break;
+        } else if (ret < 0) {
+            FINISH(ret);
+        }
+
+        av_packet_unref(packet);
+
+        if (should_skip_frame(frame)) {
+            pxc->decoded_frames_dropped++;
+            continue;
+        }
+
+        pxc->frames_decoded++;
+
+        PXFrame px_frame = px_frame_from_av(frame);
+        px_frame_assert_correctly_converted(frame, &px_frame);
+
+        ret = encode_frame(&pxc->media_ctx, frame, packet, pxc->stream_idx);
+        if (ret == AVERROR_EOF) {
+            ret = 0;
+            break;
+        } else if (ret < 0) {
+            FINISH(ret);
+        }
+
+        av_frame_unref(frame);
         av_packet_unref(packet);
     }
 
@@ -259,4 +258,10 @@ void px_settings_free(PXSettings* s) {
         av_dict_free(&s->enc_opts_v);
     if (s->enc_opts_a)
         av_dict_free(&s->enc_opts_a);
+}
+
+void px_transcode_free(AVPacket** packet, AVFrame** frame) {
+
+    av_packet_free(packet);
+    av_frame_free(frame);
 }

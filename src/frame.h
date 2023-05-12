@@ -12,9 +12,6 @@ typedef struct PXVideoPlane {
     // `height` pointers to each line
     uint8_t** data;
 
-    // contiguous array of data
-    uint8_t* data_flat;
-
     int width;
     int height;
 
@@ -23,8 +20,8 @@ typedef struct PXVideoPlane {
 typedef struct PXFrame {
 
     // 4 planes max
-    PXVideoPlane* planes[4];
-    int num_planes;
+    PXVideoPlane planes[4];
+    int n_planes;
 
     enum AVPixelFormat pix_fmt;
 
@@ -59,8 +56,8 @@ void px_frame_copy(PXFrame* dest, const PXFrame* src);
 size_t px_plane_size(const PXFrame* frame, int idx);
 size_t px_frame_size(const PXFrame* frame);
 
-PXFrame* px_frame_from_av(const AVFrame* avframe);
-bool px_frame_assert_correctly_converted(const AVFrame* src, const PXFrame* dest);
+PXFrame px_frame_from_av(const AVFrame* avframe);
+void px_frame_assert_correctly_converted(const AVFrame* src, const PXFrame* dest);
 
 int px_fb_init(PXFrameBuffer* fb, int width, int height, enum AVPixelFormat pix_fmt);
 void px_fb_free(PXFrameBuffer* fb);

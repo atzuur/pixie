@@ -67,6 +67,7 @@ int px_main(PXSettings s);
 
 int px_transcode_init(PXContext* pxc, AVPacket** packet, AVFrame** frame);
 int px_transcode(PXContext* pxc);
+void px_transcode_free(AVPacket** packet, AVFrame** frame);
 
 void px_ctx_free(PXContext* pxc);
 

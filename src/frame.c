@@ -6,13 +6,80 @@
 
 #include <stdlib.h>
 
-PXFrame* px_frame_new(int width, int height, enum AVPixelFormat pix_fmt) {
+int px_frame_alloc_bufs(PXFrame* frame) {
 
-    assert(width > 0), assert(height > 0);
+    for (int i = 0; i < frame->n_planes; i++) {
+
+        int plane_width = frame->planes[i].width;
+        int plane_height = frame->planes[i].height;
+
+        size_t plane_sz = plane_width * plane_height * frame->bytes_per_comp;
+        uint8_t* data = calloc(1, plane_sz);
+        if (!data) {
+            oom(plane_sz);
+            goto fail;
+        }
+
+        frame->planes[i].data = malloc(sizeof(uint8_t*) * plane_height);
+        if (!frame->planes[i].data) {
+            oom(sizeof(uint8_t*) * plane_height);
+            goto fail;
+        }
+
+        for (int line = 0; line < plane_height; line++) {
+            size_t stride = plane_width * frame->bytes_per_comp;
+            frame->planes[i].data[line] = data + stride * line;
+        }
+    }
+
+    return 0;
+
+fail:
+    px_frame_free(&frame);
+    return AVERROR(ENOMEM);
+}
+
+int px_frame_init(PXFrame* frame) {
+
+    if (frame->width <= 0 || frame->height <= 0) {
+        px_log(PX_LOG_ERROR, "Invalid frame dimensions: %dx%d\n", frame->width, frame->height);
+        return AVERROR(EINVAL);
+    }
+
+    const AVPixFmtDescriptor* fmt_desc = av_pix_fmt_desc_get(frame->pix_fmt);
+    if (!fmt_desc) {
+        px_log(PX_LOG_ERROR, "Unknown pixel format: %d\n", frame->pix_fmt);
+        return AVERROR(EINVAL);
+    }
+
+    // any pixel format that is not planar is unsupported
+    if (!(fmt_desc->flags & AV_PIX_FMT_FLAG_PLANAR)) {
+        px_log(PX_LOG_ERROR, "Unsupported pixel format: %s\n", av_get_pix_fmt_name(frame->pix_fmt));
+        return AVERROR(EINVAL);
+    }
+
+    frame->n_planes = av_pix_fmt_count_planes(frame->pix_fmt);
+
+    // all components have the same number of bits in planar formats
+    frame->bits_per_comp = fmt_desc->comp[0].depth;
+    frame->bytes_per_comp = ceil_div(frame->bits_per_comp, CHAR_BIT);
+
+    int chroma_width = AV_CEIL_RSHIFT(frame->width, fmt_desc->log2_chroma_w);
+    int chroma_height = AV_CEIL_RSHIFT(frame->height, fmt_desc->log2_chroma_h);
+
+    for (int i = 0; i < frame->n_planes; i++) {
+        frame->planes[i].width = i == 0 ? frame->width : chroma_width;
+        frame->planes[i].height = i == 0 ? frame->height : chroma_height;
+    }
+
+    return 0;
+}
+
+PXFrame* px_frame_new(int width, int height, enum AVPixelFormat pix_fmt) {
 
     PXFrame* frame = calloc(1, sizeof(PXFrame));
     if (!frame) {
-        oom(sizeof *frame);
+        oom(sizeof(PXFrame));
         return NULL;
     }
 
@@ -20,67 +87,12 @@ PXFrame* px_frame_new(int width, int height, enum AVPixelFormat pix_fmt) {
     frame->height = height;
     frame->pix_fmt = pix_fmt;
 
-    frame->pts = 0;
-    frame->timebase = (AVRational) {0, 1};
-
-    const AVPixFmtDescriptor* fmt_desc = av_pix_fmt_desc_get(pix_fmt);
-    if (!fmt_desc) {
-        px_log(PX_LOG_ERROR, "Unknown pixel format: %d\n", pix_fmt);
+    if (px_frame_init(frame) < 0) {
         goto fail;
     }
 
-    // any pixel format that is not planar is unsupported
-    if (!(fmt_desc->flags & AV_PIX_FMT_FLAG_PLANAR)) {
-        px_log(PX_LOG_ERROR, "Unsupported pixel format: %s\n", av_get_pix_fmt_name(pix_fmt));
+    if (px_frame_alloc_bufs(frame) < 0) {
         goto fail;
-    }
-
-    int n_planes = av_pix_fmt_count_planes(pix_fmt);
-    frame->num_planes = n_planes;
-
-    // all components have the same number of bits in planar formats
-    int bits_per_comp = fmt_desc->comp[0].depth;
-    int bytes_per_comp = ceil_div(bits_per_comp, CHAR_BIT);
-    frame->bytes_per_comp = bytes_per_comp;
-    frame->bits_per_comp = bits_per_comp;
-
-    int chroma_width = AV_CEIL_RSHIFT(width, fmt_desc->log2_chroma_w);
-    int chroma_height = AV_CEIL_RSHIFT(height, fmt_desc->log2_chroma_h);
-
-    for (int i = 0; i < n_planes; i++) {
-
-        frame->planes[i] = calloc(1, sizeof(PXVideoPlane));
-        if (!frame->planes[i]) {
-            oom(sizeof(PXVideoPlane));
-            goto fail;
-        }
-
-        // luma is 0
-        int plane_width = i == 0 ? width : chroma_width;
-        int plane_height = i == 0 ? height : chroma_height;
-
-        size_t plane_sz = plane_width * plane_height * bytes_per_comp;
-        uint8_t* data = calloc(1, plane_sz);
-        if (!data) {
-            oom(plane_sz);
-            goto fail;
-        }
-
-        frame->planes[i]->data_flat = data;
-
-        frame->planes[i]->data = malloc(sizeof(uint8_t*) * plane_height);
-        if (!frame->planes[i]->data) {
-            oom(sizeof(uint8_t*) * plane_height);
-            goto fail;
-        }
-
-        for (int line = 0; line < plane_height; line++) {
-            size_t stride = plane_width * bytes_per_comp;
-            frame->planes[i]->data[line] = data + stride * line;
-        }
-
-        frame->planes[i]->width = plane_width;
-        frame->planes[i]->height = plane_height;
     }
 
     return frame;
@@ -93,9 +105,9 @@ fail:
 void px_frame_free(PXFrame** frame) {
 
     PXFrame* fp = *frame;
-    for (int i = 0; i < fp->num_planes; i++) {
-        free_s(&fp->planes[i]->data);
-        free_s(&fp->planes[i]->data_flat);
+    for (int i = 0; i < fp->n_planes; i++) {
+        free_s(&fp->planes[i].data);
+        free_s(&fp->planes[i].data[0]);
         free_s(&fp->planes[i]);
     }
 
@@ -105,86 +117,79 @@ void px_frame_free(PXFrame** frame) {
 void px_frame_copy(PXFrame* dest, const PXFrame* src) {
 
     assert(src->pix_fmt == dest->pix_fmt);
+    assert(src->width == dest->width);
+    assert(src->height == dest->height);
 
-    *dest = *src;
+    for (int i = 0; i < src->n_planes; i++) {
 
-    for (int i = 0; i < src->num_planes; i++) {
-
-        PXVideoPlane* dest_plane = dest->planes[i];
-        const PXVideoPlane* src_plane = src->planes[i];
-
-        size_t plane_sz = src_plane->width * src_plane->height * src->bytes_per_comp;
-        memcpy(dest_plane->data_flat, src_plane->data_flat, plane_sz);
-
-        *dest_plane = *src_plane;
+        PXVideoPlane* dest_plane = &dest->planes[i];
+        const PXVideoPlane* src_plane = &src->planes[i];
 
         for (int line = 0; line < dest_plane->height; line++) {
-            size_t stride = dest_plane->width * dest->bytes_per_comp;
-            dest_plane->data[line] = src_plane->data_flat + stride * line;
+            size_t line_sz = dest_plane->width * dest->bytes_per_comp;
+            memcpy(dest_plane->data[line], src_plane->data[line], line_sz);
         }
     }
+
+    dest->pts = src->pts;
+    dest->timebase = src->timebase;
 }
 
 size_t px_plane_size(const PXFrame* frame, int idx) {
-    return frame->planes[idx]->width * frame->planes[idx]->height * frame->bytes_per_comp;
+    return frame->planes[idx].width * frame->planes[idx].height * frame->bytes_per_comp;
 }
 
 size_t px_frame_size(const PXFrame* frame) {
 
     size_t size = 0;
-    for (int i = 0; i < frame->num_planes; i++) {
+    for (int i = 0; i < frame->n_planes; i++) {
         size += px_plane_size(frame, i);
     }
 
     return size;
 }
 
-PXFrame* px_frame_from_av(const AVFrame* avframe) {
+PXFrame px_frame_from_av(const AVFrame* avframe) {
 
-    PXFrame* frame = px_frame_new(avframe->width, avframe->height, avframe->format);
-    if (!frame) {
-        return NULL;
-    }
+    PXFrame frame = {
+        .width = avframe->width,
+        .height = avframe->height,
+        .pix_fmt = avframe->format,
+        .pts = avframe->pts,
+        .timebase = avframe->time_base,
+    };
 
-    for (int i = 0; i < frame->num_planes; i++) {
-        for (int line = 0; line < frame->planes[i]->height; line++) {
+    for (int i = 0; i < frame.n_planes; i++) {
+        for (int line = 0; line < frame.planes[i].height; line++) {
 
             size_t av_stride = avframe->linesize[i];
-            size_t stride = frame->planes[i]->width * frame->bytes_per_comp;
+            size_t stride = frame.planes[i].width * frame.bytes_per_comp;
 
-            uint8_t* dest = frame->planes[i]->data_flat + stride * line;
-            uint8_t* src = avframe->data[i] + av_stride * line;
-
-            memcpy(dest, src, stride);
+            frame.planes[i].data[line] = avframe->data[i] + av_stride * line;
         }
     }
-
-    frame->pts = avframe->pts;
-    frame->timebase = avframe->time_base;
 
     return frame;
 }
 
-bool px_frame_assert_correctly_converted(const AVFrame* src, const PXFrame* dest) {
+void px_frame_assert_correctly_converted(const AVFrame* src, const PXFrame* dest) {
 
     assert(src->width == dest->width);
     assert(src->height == dest->height);
     assert(src->format == dest->pix_fmt);
 
-    for (int i = 0; i < dest->num_planes; i++) {
-        for (int line = 0; line < dest->planes[i]->height; line++) {
+    for (int i = 0; i < dest->n_planes; i++) {
+        for (int line = 0; line < dest->planes[i].height; line++) {
 
             size_t av_stride = src->linesize[i];
-            size_t stride = dest->planes[i]->width * dest->bytes_per_comp;
+            size_t actual_stride = dest->planes[i].width * dest->bytes_per_comp;
 
-            uint8_t* dest_line = dest->planes[i]->data_flat + stride * line;
+            uint8_t* dest_line = dest->planes[i].data[line];
             uint8_t* src_line = src->data[i] + av_stride * line;
 
-            assert(memcmp(dest_line, src_line, stride) == 0);
+            assert(memcmp(dest_line, src_line, actual_stride) == 0);
         }
     }
-
-    return true;
 }
 
 int px_fb_init(PXFrameBuffer* fb, int width, int height, enum AVPixelFormat pix_fmt) {
