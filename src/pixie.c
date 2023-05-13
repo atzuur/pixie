@@ -1,4 +1,5 @@
 #include "pixie.h"
+#include "../tests/test_filter.c"
 #include "cli.h"
 #include "coding.h"
 #include "frame.h"
@@ -8,7 +9,7 @@ static bool should_skip_frame(AVFrame* frame) {
     if (frame->flags & AV_FRAME_FLAG_DISCARD)
         return true;
 
-    static int64_t last_pts = INT_MIN; // avoid skipping the first frame unintentionally
+    static int64_t last_pts = INT64_MIN; // avoid unintentionally skipping the first frame
     int64_t pts = frame->pts;
 
     if (pts != AV_NOPTS_VALUE && last_pts >= pts)
@@ -21,7 +22,18 @@ static bool should_skip_frame(AVFrame* frame) {
 int px_main(PXSettings s) {
 
     int ret = 0;
-    PXContext pxc = {.settings = s};
+
+    PXFilter test_fltr = {
+        .name = "test",
+        .init = test_filter_init,
+        .apply = test_filter_apply,
+        .free = test_filter_free,
+    };
+
+    PXContext pxc = {
+        .settings = s,
+        .fltr_ctx = {.filters = &test_fltr, .n_filters = 1},
+    };
 
     pxc.transc_thread = (PXThread) {
         .func = (PXThreadFunc)px_transcode,
@@ -132,6 +144,18 @@ int px_transcode(PXContext* pxc) {
         PXFrame px_frame = px_frame_from_av(frame);
         px_frame_assert_correctly_converted(frame, &px_frame);
 
+        for (int i = 0; i < pxc->fltr_ctx.n_filters; i++) {
+            PXFilter* fltr = &pxc->fltr_ctx.filters[i];
+
+            fltr->frame = &px_frame;
+
+            ret = fltr->apply(fltr);
+            if (ret < 0) {
+                px_log(PX_LOG_ERROR, "Failed to apply filter \"%s\"\n", fltr->name);
+                FINISH(ret);
+            }
+        }
+
         ret = encode_frame(&pxc->media_ctx, frame, packet, pxc->stream_idx);
         if (ret == AVERROR_EOF) {
             ret = 0;
@@ -184,6 +208,15 @@ int px_transcode_init(PXContext* pxc, AVPacket** packet, AVFrame** frame) {
     if (ret) {
         px_log(PX_LOG_ERROR, "Failed to open output file \"%s\": %s (%d)\n", outfile, av_err2str(ret), ret);
         goto end;
+    }
+
+    for (int i = 0; i < pxc->fltr_ctx.n_filters; i++) {
+        PXFilter* fltr = &pxc->fltr_ctx.filters[i];
+        ret = fltr->init(fltr, NULL); // TODO: pass settings
+        if (ret) {
+            px_log(PX_LOG_ERROR, "Failed to initialize filter \"%s\"\n", fltr->name);
+            goto end;
+        }
     }
 
     *packet = av_packet_alloc();
@@ -245,6 +278,11 @@ int px_settings_init(int argc, char** argv, PXSettings* s) {
 }
 
 void px_ctx_free(PXContext* pxc) {
+
+    for (int i = 0; i < pxc->fltr_ctx.n_filters; i++) {
+        PXFilter* fltr = &pxc->fltr_ctx.filters[i];
+        fltr->free(fltr);
+    }
 
     px_media_ctx_free(&pxc->media_ctx);
     px_settings_free(&pxc->settings);

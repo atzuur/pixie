@@ -1,5 +1,6 @@
 #pragma once
 
+#include "filter.h"
 #include "log.h"
 #include "util/sync.h"
 #include "util/utils.h"
@@ -8,6 +9,7 @@
 #include <libavformat/avformat.h>
 
 #include <ctype.h>
+#include <libavutil/dict.h>
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -26,6 +28,10 @@ typedef struct PXSettings {
     char* enc_name_a;
     AVDictionary* enc_opts_v;
     AVDictionary* enc_opts_a;
+
+    char** filter_names;
+    AVDictionary** filter_opts;
+    int n_filters;
 
     PXLogLevel loglevel;
 
@@ -47,10 +53,18 @@ typedef struct PXMediaContext {
 
 } PXMediaContext;
 
+typedef struct PXFilterContext {
+
+    PXFilter* filters;
+    int n_filters;
+
+} PXFilterContext;
+
 typedef struct PXContext {
 
     PXSettings settings;
     PXMediaContext media_ctx;
+    PXFilterContext fltr_ctx;
 
     PXThread transc_thread;
 

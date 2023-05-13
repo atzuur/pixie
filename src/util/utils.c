@@ -59,7 +59,7 @@ int create_folder(char* path) {
     return 1;
 }
 
-void sleep_milli(int ms) {
+void sleep_ms(int ms) {
     Sleep(ms);
 }
 #endif

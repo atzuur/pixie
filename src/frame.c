@@ -161,11 +161,7 @@ PXFrame px_frame_from_av(const AVFrame* avframe) {
 
     for (int i = 0; i < frame.n_planes; i++) {
         for (int line = 0; line < frame.planes[i].height; line++) {
-
-            size_t av_stride = avframe->linesize[i];
-            size_t stride = frame.planes[i].width * frame.bytes_per_comp;
-
-            frame.planes[i].data[line] = avframe->data[i] + av_stride * line;
+            frame.planes[i].data[line] = avframe->data[i] + avframe->linesize[i] * line;
         }
     }
 
