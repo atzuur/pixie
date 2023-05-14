@@ -3,6 +3,7 @@
 #include "cli.h"
 #include "coding.h"
 #include "frame.h"
+#include <libavutil/avutil.h>
 
 static bool should_skip_frame(AVFrame* frame) {
 
@@ -122,6 +123,7 @@ int px_transcode(PXContext* pxc) {
                 lav_throw_msg("av_interleaved_write_frame", ret);
                 FINISH(ret);
             }
+            continue;
         }
 
         ret = decode_frame(stc, frame, packet);
@@ -169,6 +171,10 @@ int px_transcode(PXContext* pxc) {
     }
 
     for (unsigned i = 0; i < pxc->media_ctx.ifmt_ctx->nb_streams; i++) {
+        enum AVMediaType stream_type = pxc->media_ctx.ifmt_ctx->streams[i]->codecpar->codec_type;
+        if (stream_type != AVMEDIA_TYPE_VIDEO)
+            continue;
+
         ret = flush_encoder(&pxc->media_ctx, packet, i);
         if (ret < 0 && ret != AVERROR_EOF) {
             px_log(PX_LOG_ERROR, "Failed to flush encoder\n");
