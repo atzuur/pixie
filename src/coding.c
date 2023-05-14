@@ -104,7 +104,7 @@ int init_output(PXMediaContext* ctx, const char* filename, PXSettings* s) {
             return ret;
         }
 
-        enum AVMediaType stream_type = ctx->stream_ctx_vec[i].dec_ctx->codec_type;
+        enum AVMediaType stream_type = ctx->ifmt_ctx->streams[i]->codecpar->codec_type;
 
         if (stream_type == AVMEDIA_TYPE_VIDEO) {
 
