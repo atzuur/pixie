@@ -166,6 +166,8 @@ int px_transcode(PXContext* pxc) {
             FINISH(ret);
         }
 
+        pxc->frames_output++;
+
         av_frame_unref(frame);
         av_packet_unref(packet);
     }
