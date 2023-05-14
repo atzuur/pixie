@@ -84,77 +84,6 @@ int init_input(PXMediaContext* ctx, const char* filename) {
     return 0;
 }
 
-int init_decoder(PXMediaContext* ctx, unsigned stream_idx) {
-
-    int ret;
-    const AVCodecParameters* dec_params = ctx->ifmt_ctx->streams[stream_idx]->codecpar;
-
-    const AVCodec* decoder = avcodec_find_decoder(ctx->ifmt_ctx->streams[stream_idx]->codecpar->codec_id);
-    if (!decoder) {
-        px_log(PX_LOG_ERROR, "Failed to find decoder for stream %d\n", stream_idx);
-        return AVERROR_DECODER_NOT_FOUND;
-    }
-
-    AVCodecContext* dec_ctx = avcodec_alloc_context3(decoder);
-    if (!dec_ctx) {
-        oom(sizeof *dec_ctx);
-        return AVERROR(ENOMEM);
-    }
-
-    ctx->stream_ctx_vec[stream_idx].dec_ctx = dec_ctx;
-
-    ret = avcodec_parameters_to_context(dec_ctx, dec_params);
-    if (ret < 0) {
-        lav_throw_msg("avcodec_parameters_to_context", ret);
-        return ret;
-    }
-
-    ret = avcodec_open2(dec_ctx, decoder, NULL);
-    if (ret < 0) {
-        lav_throw_msg("avcodec_open2", ret);
-        return ret;
-    }
-
-    return 0;
-}
-
-int decode_frame(const PXStreamContext* ctx, AVFrame* frame, AVPacket* packet) {
-
-    int ret = 0;
-
-    ret = avcodec_send_packet(ctx->dec_ctx, packet);
-    if (ret < 0) {
-        switch (ret) {
-            case AVERROR(EAGAIN):
-                return 0;
-            case AVERROR_EOF:
-                return ret;
-            default:
-                lav_throw_msg("avcodec_send_packet", ret);
-                return ret;
-        }
-    }
-
-    ret = avcodec_receive_frame(ctx->dec_ctx, frame);
-    if (ret < 0) {
-        switch (ret) {
-            case AVERROR(EAGAIN):
-                return 0;
-            case AVERROR_EOF:
-                return ret;
-            default:
-                lav_throw_msg("avcodec_receive_frame", ret);
-                return ret;
-        }
-    }
-
-    frame->pts = frame->best_effort_timestamp;
-
-    av_packet_unref(packet);
-
-    return 0;
-}
-
 int init_output(PXMediaContext* ctx, const char* filename, PXSettings* s) {
 
     int ret = 0;
@@ -213,6 +142,40 @@ int init_output(PXMediaContext* ctx, const char* filename, PXSettings* s) {
     return 0;
 }
 
+int init_decoder(PXMediaContext* ctx, unsigned stream_idx) {
+
+    int ret;
+    const AVCodecParameters* dec_params = ctx->ifmt_ctx->streams[stream_idx]->codecpar;
+
+    const AVCodec* decoder = avcodec_find_decoder(ctx->ifmt_ctx->streams[stream_idx]->codecpar->codec_id);
+    if (!decoder) {
+        px_log(PX_LOG_ERROR, "Failed to find decoder for stream %d\n", stream_idx);
+        return AVERROR_DECODER_NOT_FOUND;
+    }
+
+    AVCodecContext* dec_ctx = avcodec_alloc_context3(decoder);
+    if (!dec_ctx) {
+        oom(sizeof *dec_ctx);
+        return AVERROR(ENOMEM);
+    }
+
+    ctx->stream_ctx_vec[stream_idx].dec_ctx = dec_ctx;
+
+    ret = avcodec_parameters_to_context(dec_ctx, dec_params);
+    if (ret < 0) {
+        lav_throw_msg("avcodec_parameters_to_context", ret);
+        return ret;
+    }
+
+    ret = avcodec_open2(dec_ctx, decoder, NULL);
+    if (ret < 0) {
+        lav_throw_msg("avcodec_open2", ret);
+        return ret;
+    }
+
+    return 0;
+}
+
 int init_encoder(const PXMediaContext* ctx, const char* enc_name, AVDictionary** enc_opts,
                  unsigned stream_idx, AVStream* out_stream) {
     int ret = 0;
@@ -253,6 +216,43 @@ int init_encoder(const PXMediaContext* ctx, const char* enc_name, AVDictionary**
         lav_throw_msg("avcodec_open2", ret);
         return ret;
     }
+
+    return 0;
+}
+
+int decode_frame(const PXStreamContext* ctx, AVFrame* frame, AVPacket* packet) {
+
+    int ret = 0;
+
+    ret = avcodec_send_packet(ctx->dec_ctx, packet);
+    if (ret < 0) {
+        switch (ret) {
+            case AVERROR(EAGAIN):
+                return 0;
+            case AVERROR_EOF:
+                return ret;
+            default:
+                lav_throw_msg("avcodec_send_packet", ret);
+                return ret;
+        }
+    }
+
+    ret = avcodec_receive_frame(ctx->dec_ctx, frame);
+    if (ret < 0) {
+        switch (ret) {
+            case AVERROR(EAGAIN):
+                return 0;
+            case AVERROR_EOF:
+                return ret;
+            default:
+                lav_throw_msg("avcodec_receive_frame", ret);
+                return ret;
+        }
+    }
+
+    frame->pts = frame->best_effort_timestamp;
+
+    av_packet_unref(packet);
 
     return 0;
 }
