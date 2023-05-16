@@ -1,6 +1,6 @@
 CC = gcc
 BIN = pixie
-CFLAGS = -Wall -Wextra -pedantic
+CFLAGS = -Wall -Wextra -Wpedantic -Wno-gnu-zero-variadic-macro-arguments
 CFLAGS_DEBUG = -g3 -fsanitize=address,undefined
 CFLAGS_RELEASE = -O3 -flto
 

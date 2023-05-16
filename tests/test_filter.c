@@ -1,8 +1,11 @@
 #include "../src/pixie.h"
 
-void test_filter_free() {}
+void test_filter_free(PXFilter* filter) {
+    (void)filter;
+}
 
-int test_filter_init() {
+int test_filter_init(PXFilter* filter, AVDictionary* args) {
+    (void)filter, (void)args;
     return 0;
 }
 

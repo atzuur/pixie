@@ -1,11 +1,11 @@
 #include "sync.h"
 
-inline void px_mtx_create(PXMutex* mutex) {
+void px_mtx_create(PXMutex* mutex) {
 #ifdef C11_THREADS
 
     int res = mtx_init(&mutex->mtx, mtx_plain);
     assert_or(res == thrd_success) {
-        c11thrd_throw_msg("mtx_init", res);
+        c11_thrd_throw_msg("mtx_init", res);
     }
 
 #endif
@@ -27,7 +27,7 @@ inline void px_mtx_create(PXMutex* mutex) {
 #endif
 }
 
-inline void px_mtx_destroy(PXMutex* mutex) {
+void px_mtx_destroy(PXMutex* mutex) {
 #ifdef C11_THREADS
 
     mtx_destroy(&mutex->mtx);
@@ -52,12 +52,12 @@ inline void px_mtx_destroy(PXMutex* mutex) {
     memset(mutex, '\0', sizeof(PXMutex));
 }
 
-inline void px_mtx_lock(PXMutex* mutex) {
+void px_mtx_lock(PXMutex* mutex) {
 #ifdef C11_THREADS
 
     int res = mtx_lock(&mutex->mtx);
     assert_or(res == thrd_success) {
-        c11thrd_throw_msg("mtx_lock", res);
+        c11_thrd_throw_msg("mtx_lock", res);
     }
 
 #endif
@@ -79,12 +79,12 @@ inline void px_mtx_lock(PXMutex* mutex) {
 #endif
 }
 
-inline void px_mtx_try_lock(PXMutex* mutex) {
+void px_mtx_try_lock(PXMutex* mutex) {
 #ifdef C11_THREADS
 
     int res = mtx_trylock(&mutex->mtx);
     assert_or(res == thrd_success || res == thrd_busy) {
-        c11thrd_throw_msg("mtx_trylock", res);
+        c11_thrd_throw_msg("mtx_trylock", res);
     }
 
 #endif
@@ -111,7 +111,7 @@ void px_mtx_unlock(PXMutex* mutex) {
 
     int res = mtx_unlock(&mutex->mtx);
     assert_or(res == thrd_success) {
-        c11thrd_throw_msg("mtx_unlock", res);
+        c11_thrd_throw_msg("mtx_unlock", res);
     }
 
 #endif

@@ -16,16 +16,24 @@
 #define C11_THREADS
 #include <threads.h>
 
-// fuck c11 for not using errno
-void c11thrd_err_strerror_r(int err, char* dest, size_t len);
-
-static inline void c11thrd_throw_msg(const char* func, int err) {
-
-    char errstr[256];
-    c11thrd_err_strerror_r(err, errstr, 256u);
-
-    fprintf(stderr, "%s() failed at %s:%d : %s (%d)\n", func, __FILE__, __LINE__, errstr, err);
+static inline const char* c11_thrd_strerror(int err) {
+    switch (err) {
+        case thrd_success:
+            return strerror(0);
+        case thrd_nomem:
+            return strerror(ENOMEM);
+        case thrd_timedout:
+            return strerror(ETIMEDOUT);
+        case thrd_busy:
+            return strerror(EBUSY);
+        case thrd_error: // fallthrough
+        default:
+            return "Unspecified thread error";
+    }
 }
+
+#define c11_thrd_throw_msg(func, err) \
+    fprintf(stderr, "%s() failed at %s:%d : %s (%d)\n", func, __FILE__, __LINE__, c11_thrd_strerror(err), err)
 
 #elif defined(_WIN32) && !defined(C11_THREADS)
 #define WIN32_THREADS

@@ -22,7 +22,7 @@ typedef struct PXSettings {
     char** input_files;
     int n_input_files;
 
-    char* output_file;
+    char* output_url;
 
     char* enc_name_v;
     char* enc_name_a;

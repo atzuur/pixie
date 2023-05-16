@@ -227,8 +227,6 @@ int decode_frame(const PXStreamContext* ctx, AVFrame* frame, AVPacket* packet) {
     ret = avcodec_send_packet(ctx->dec_ctx, packet);
     if (ret < 0) {
         switch (ret) {
-            case AVERROR(EAGAIN):
-                return 0;
             case AVERROR_EOF:
                 return ret;
             default:
@@ -241,7 +239,7 @@ int decode_frame(const PXStreamContext* ctx, AVFrame* frame, AVPacket* packet) {
     if (ret < 0) {
         switch (ret) {
             case AVERROR(EAGAIN):
-                return 0;
+                return decode_frame(ctx, frame, packet);
             case AVERROR_EOF:
                 return ret;
             default:
@@ -263,10 +261,8 @@ int encode_frame(const PXMediaContext* ctx, AVFrame* frame, AVPacket* packet, un
     PXStreamContext* stc = &ctx->stream_ctx_vec[stream_idx];
 
     ret = avcodec_send_frame(stc->enc_ctx, frame);
-    if (ret < 0)
+    if (ret < 0) {
         switch (ret) {
-            case AVERROR(EAGAIN):
-                return 0;
             case AVERROR_EOF:
                 return ret;
             case AVERROR(EINVAL): // should not happen
@@ -276,27 +272,30 @@ int encode_frame(const PXMediaContext* ctx, AVFrame* frame, AVPacket* packet, un
                 lav_throw_msg("avcodec_send_frame", ret);
                 return ret;
         }
+    }
 
-    while (ret >= 0) {
-
-        ret = avcodec_receive_packet(stc->enc_ctx, packet);
-        if (ret == AVERROR_EOF || ret == AVERROR(EAGAIN)) {
-            return 0;
-        } else if (ret < 0) {
-            lav_throw_msg("avcodec_receive_packet", ret);
-            return ret;
+    ret = avcodec_receive_packet(stc->enc_ctx, packet);
+    if (ret < 0) {
+        switch (ret) {
+            case AVERROR(EAGAIN):
+                return encode_frame(ctx, frame, packet, stream_idx);
+            case AVERROR_EOF:
+                return ret;
+            default:
+                lav_throw_msg("avcodec_receive_packet", ret);
+                return ret;
         }
+    }
 
-        packet->stream_index = stream_idx;
+    packet->stream_index = stream_idx;
 
-        av_packet_rescale_ts(packet, ctx->ifmt_ctx->streams[stream_idx]->time_base,
-                             ctx->ofmt_ctx->streams[stream_idx]->time_base);
+    av_packet_rescale_ts(packet, ctx->ifmt_ctx->streams[stream_idx]->time_base,
+                         ctx->ofmt_ctx->streams[stream_idx]->time_base);
 
-        ret = av_interleaved_write_frame(ctx->ofmt_ctx, packet);
-        if (ret < 0) {
-            lav_throw_msg("av_interleaved_write_frame", ret);
-            return ret;
-        }
+    ret = av_interleaved_write_frame(ctx->ofmt_ctx, packet);
+    if (ret < 0) {
+        lav_throw_msg("av_interleaved_write_frame", ret);
+        return ret;
     }
 
     av_frame_unref(frame);

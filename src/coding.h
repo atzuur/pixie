@@ -2,9 +2,8 @@
 
 #include "pixie.h"
 
-static inline void lav_throw_msg(const char* func, int err) {
-    px_log(PX_LOG_ERROR, "%s() failed at %s:%d : code %d\n", func, __FILE__, __LINE__, err);
-}
+#define lav_throw_msg(func, err) \
+    px_log(PX_LOG_ERROR, "%s() failed at %s:%d : code %d\n", func, __FILE__, __LINE__, err)
 
 void px_media_ctx_free(PXMediaContext* ctx);
 

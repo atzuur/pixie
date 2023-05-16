@@ -3,7 +3,6 @@
 #include "cli.h"
 #include "coding.h"
 #include "frame.h"
-#include <libavutil/avutil.h>
 
 static bool should_skip_frame(AVFrame* frame) {
 
@@ -50,7 +49,7 @@ int px_main(PXSettings s) {
             break;
         }
 
-        if (strcmp(current_file, pxc.settings.output_file) == 0) {
+        if (strcmp(current_file, pxc.settings.output_url) == 0) {
             px_log(PX_LOG_ERROR, "Input and output files cannot be the same\n");
             ret = AVERROR(EINVAL);
             break;
@@ -88,16 +87,9 @@ int px_transcode(PXContext* pxc) {
     AVFrame* frame = NULL;
     AVPacket* packet = NULL;
 
-#define FINISH(r)                           \
-    do {                                    \
-        px_transcode_free(&packet, &frame); \
-        pxc->transc_thread.done = true;     \
-        return r;                           \
-    } while (0)
-
     ret = px_transcode_init(pxc, &packet, &frame);
     if (ret)
-        FINISH(ret);
+        goto end;
 
     while (1) {
 
@@ -107,7 +99,7 @@ int px_transcode(PXContext* pxc) {
             break;
         } else if (ret < 0) {
             lav_throw_msg("av_read_frame", ret);
-            FINISH(ret);
+            goto end;
         }
 
         pxc->stream_idx = packet->stream_index;
@@ -121,7 +113,7 @@ int px_transcode(PXContext* pxc) {
             ret = av_interleaved_write_frame(pxc->media_ctx.ofmt_ctx, packet);
             if (ret < 0) {
                 lav_throw_msg("av_interleaved_write_frame", ret);
-                FINISH(ret);
+                goto end;
             }
             continue;
         }
@@ -131,7 +123,7 @@ int px_transcode(PXContext* pxc) {
             ret = 0;
             break;
         } else if (ret < 0) {
-            FINISH(ret);
+            goto end;
         }
 
         av_packet_unref(packet);
@@ -142,6 +134,12 @@ int px_transcode(PXContext* pxc) {
         }
 
         pxc->frames_decoded++;
+
+        ret = av_frame_make_writable(frame);
+        if (ret < 0) {
+            lav_throw_msg("av_frame_make_writable", ret);
+            goto end;
+        }
 
         PXFrame px_frame = px_frame_from_av(frame);
         px_frame_assert_correctly_converted(frame, &px_frame);
@@ -154,7 +152,7 @@ int px_transcode(PXContext* pxc) {
             ret = fltr->apply(fltr);
             if (ret < 0) {
                 px_log(PX_LOG_ERROR, "Failed to apply filter \"%s\"\n", fltr->name);
-                FINISH(ret);
+                goto end;
             }
         }
 
@@ -163,7 +161,7 @@ int px_transcode(PXContext* pxc) {
             ret = 0;
             break;
         } else if (ret < 0) {
-            FINISH(ret);
+            goto end;
         }
 
         pxc->frames_output++;
@@ -180,7 +178,7 @@ int px_transcode(PXContext* pxc) {
         ret = flush_encoder(&pxc->media_ctx, packet, i);
         if (ret < 0 && ret != AVERROR_EOF) {
             px_log(PX_LOG_ERROR, "Failed to flush encoder\n");
-            FINISH(ret);
+            goto end;
         }
     }
 
@@ -188,9 +186,10 @@ int px_transcode(PXContext* pxc) {
     if (ret < 0)
         lav_throw_msg("av_write_trailer", ret);
 
-    FINISH(ret);
-
-#undef FINISH
+end:
+    px_transcode_free(&packet, &frame);
+    pxc->transc_thread.done = true;
+    return ret;
 }
 
 int px_transcode_init(PXContext* pxc, AVPacket** packet, AVFrame** frame) {
@@ -200,22 +199,25 @@ int px_transcode_init(PXContext* pxc, AVPacket** packet, AVFrame** frame) {
     *packet = NULL;
     *frame = NULL;
 
-    char* infile = pxc->settings.input_files[pxc->input_idx];
+    char* in_file = pxc->settings.input_files[pxc->input_idx];
+    char* out_url = pxc->settings.output_url;
 
-    char* outfile = pxc->settings.n_input_files > 1
-                        ? strcat(pxc->settings.output_file, pxc->settings.input_files[pxc->input_idx])
-                        : pxc->settings.output_file;
-
-    ret = init_input(&pxc->media_ctx, infile);
-    if (ret) {
-        px_log(PX_LOG_ERROR, "Failed to open input file \"%s\": %s (%d)\n", infile, av_err2str(ret), ret);
-        goto end;
+    if (pxc->settings.n_input_files > 1) {
+        char* in_file_basename = get_basename(in_file);
+        pxc->settings.output_url = out_url = realloc(out_url, strlen(out_url) + strlen(in_file_basename) + 1);
+        strcat(out_url, in_file_basename);
     }
 
-    ret = init_output(&pxc->media_ctx, outfile, &pxc->settings);
+    ret = init_input(&pxc->media_ctx, in_file);
     if (ret) {
-        px_log(PX_LOG_ERROR, "Failed to open output file \"%s\": %s (%d)\n", outfile, av_err2str(ret), ret);
-        goto end;
+        px_log(PX_LOG_ERROR, "Failed to open input file \"%s\": %s (%d)\n", in_file, av_err2str(ret), ret);
+        return ret;
+    }
+
+    ret = init_output(&pxc->media_ctx, out_url, &pxc->settings);
+    if (ret) {
+        px_log(PX_LOG_ERROR, "Failed to open output file \"%s\": %s (%d)\n", out_url, av_err2str(ret), ret);
+        return ret;
     }
 
     for (int i = 0; i < pxc->fltr_ctx.n_filters; i++) {
@@ -223,7 +225,7 @@ int px_transcode_init(PXContext* pxc, AVPacket** packet, AVFrame** frame) {
         ret = fltr->init(fltr, NULL); // TODO: pass settings
         if (ret) {
             px_log(PX_LOG_ERROR, "Failed to initialize filter \"%s\"\n", fltr->name);
-            goto end;
+            return ret;
         }
     }
 
@@ -240,7 +242,6 @@ int px_transcode_init(PXContext* pxc, AVPacket** packet, AVFrame** frame) {
         return AVERROR(ENOMEM);
     }
 
-end:
     return ret;
 }
 
@@ -257,22 +258,22 @@ int px_settings_init(int argc, char** argv, PXSettings* s) {
         return 1;
     }
 
-    if (!s->output_file) {
+    if (!s->output_url) {
         px_log(PX_LOG_ERROR, "No output file specified\n");
         return 1;
     }
 
-    // /path/to/output_file/input_files[i]
+    // /path/to/output_url/input_files[i]
     if (s->n_input_files > 1) {
 
-        char last = s->output_file[strlen(s->output_file) - 1];
+        char last = s->output_url[strlen(s->output_url) - 1];
         if (last != *PATH_SEP) {
             // +1 for the path sep, +1 for the null terminator
-            s->output_file = realloc(s->output_file, strlen(s->output_file) + 1 + 1);
-            strcat(s->output_file, PATH_SEP);
+            s->output_url = realloc(s->output_url, strlen(s->output_url) + 1 + 1);
+            strcat(s->output_url, PATH_SEP);
         }
 
-        if (!create_folder(s->output_file)) {
+        if (!create_folder(s->output_url)) {
             char err[256];
             last_errstr(err, 0);
             px_log(PX_LOG_ERROR, "Failed to create output directory: %s (%d)\n", err, last_errcode());
@@ -298,7 +299,7 @@ void px_ctx_free(PXContext* pxc) {
 
 void px_settings_free(PXSettings* s) {
 
-    free_s(&s->output_file);
+    free_s(&s->output_url);
 
     if (s->enc_opts_v)
         av_dict_free(&s->enc_opts_v);

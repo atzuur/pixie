@@ -81,7 +81,7 @@ int px_parse_args(int argc, char** argv, PXSettings* s) {
             });
 
             if_arg_is("-o", {
-                s->output_file = strdup(argv[i + 1]); // strdup because may be modified
+                s->output_url = strdup(argv[i + 1]); // strdup because may be modified
                 i++;
             });
 
@@ -119,7 +119,7 @@ int px_parse_args(int argc, char** argv, PXSettings* s) {
         return 1;
     }
 
-#undef if_arg_is
-
     return ret;
+
+#undef if_arg_is
 }
