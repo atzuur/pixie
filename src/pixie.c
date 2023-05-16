@@ -303,8 +303,6 @@ void px_settings_free(PXSettings* s) {
 
     if (s->enc_opts_v)
         av_dict_free(&s->enc_opts_v);
-    if (s->enc_opts_a)
-        av_dict_free(&s->enc_opts_a);
 }
 
 void px_transcode_free(AVPacket** packet, AVFrame** frame) {

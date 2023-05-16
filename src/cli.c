@@ -7,16 +7,15 @@ void px_print_info(const char* prog_name, bool full) {
            "Usage: %s -i <input file(s)> [options] -o <output file/folder>\n",
            PX_VERSION, av_version_info(), prog_name);
 
-    if (full) {
-        puts("Options:\n"
-             "  -i <file> [file ...]  Input file(s), separated by space\n"
-             "  -o <file>             Output file, treated as a folder if inputs > 1\n"
-             "  -v <encoder>          Video encoder name\n"
-             "  -a <encoder>          Audio encoder name\n"
-             "  -t <int>              Number of threads to use for filtering\n"
-             "  -l <int>              Log level: quiet|warn|error|info|verbose (default: info)\n"
-             "  -h                    Print this help message");
-    }
+    if (full)
+        puts(
+            "Options:\n"
+            "  -i <file> [file ...]     Input file(s), separated by space\n"
+            "  -o <file>                Output file, treated as a folder if inputs > 1\n"
+            "  -v <encoder>,[opt1:...]  Video encoder name\n"
+            "  -t <int>                 Number of threads to use for filtering\n"
+            "  -l <int>                 Log level: quiet|error|progress|warn|info|verbose (default: progress)\n"
+            "  -h                       Print this help message");
 }
 
 int px_parse_args(int argc, char** argv, PXSettings* s) {
@@ -55,25 +54,12 @@ int px_parse_args(int argc, char** argv, PXSettings* s) {
             });
 
             if_arg_is("-v", {
-                s->enc_name_v = strtok(argv[i + 1], ":");
-                char* enc_opts = strtok(NULL, ":");
+                s->enc_name_v = strtok(argv[i + 1], ",");
+                char* enc_opts = strtok(NULL, ",");
                 if (enc_opts) {
-                    ret = av_dict_parse_string(&s->enc_opts_v, enc_opts, "=", ",", 0);
+                    ret = av_dict_parse_string(&s->enc_opts_v, enc_opts, "=", ":", 0);
                     if (ret < 0) {
-                        px_log(PX_LOG_ERROR, "Failed to parse encoding options: %s\n", enc_opts);
-                        break;
-                    }
-                }
-                i++;
-            });
-
-            if_arg_is("-a", {
-                s->enc_name_a = strtok(argv[i + 1], ":");
-                char* enc_opts = strtok(NULL, ":");
-                if (enc_opts) {
-                    ret = av_dict_parse_string(&s->enc_opts_a, enc_opts, "=", ",", 0);
-                    if (ret < 0) {
-                        px_log(PX_LOG_ERROR, "Failed to parse encoding options: %s\n", enc_opts);
+                        px_log(PX_LOG_ERROR, "Failed to parse encoding options (\"%s\")\n", enc_opts);
                         break;
                     }
                 }

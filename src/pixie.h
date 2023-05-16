@@ -25,9 +25,7 @@ typedef struct PXSettings {
     char* output_url;
 
     char* enc_name_v;
-    char* enc_name_a;
     AVDictionary* enc_opts_v;
-    AVDictionary* enc_opts_a;
 
     char** filter_names;
     AVDictionary** filter_opts;

@@ -11,6 +11,7 @@ BreakBeforeBinaryOperators: None
 BreakBeforeTernaryOperators: 'true'
 BreakConstructorInitializers: AfterColon
 BreakInheritanceList: AfterColon
+BreakStringLiterals: 'false'
 ColumnLimit: '110'
 IndentWidth: '4'
 IndentWrappedFunctionNames: 'false'

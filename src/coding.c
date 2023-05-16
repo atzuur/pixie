@@ -54,12 +54,6 @@ int init_input(PXMediaContext* ctx, const char* filename) {
     for (unsigned i = 0; i < ctx->ifmt_ctx->nb_streams; i++) {
 
         enum AVMediaType stream_type = ctx->ifmt_ctx->streams[i]->codecpar->codec_type;
-
-        if (stream_type == AVMEDIA_TYPE_UNKNOWN) {
-            px_log(PX_LOG_ERROR, "Stream %d is of unknown type, cannot proceed\n", i);
-            return AVERROR_INVALIDDATA;
-        }
-
         if (stream_type == AVMEDIA_TYPE_VIDEO) {
 
             streams_found = true;
@@ -77,7 +71,7 @@ int init_input(PXMediaContext* ctx, const char* filename) {
     }
 
     if (!streams_found) {
-        px_log(PX_LOG_ERROR, "No valid streams found in file \"%s\"\n", filename);
+        px_log(PX_LOG_ERROR, "No video streams found in file \"%s\"\n", filename);
         return AVERROR_INVALIDDATA;
     }
 
@@ -180,8 +174,6 @@ int init_encoder(const PXMediaContext* ctx, const char* enc_name, AVDictionary**
                  unsigned stream_idx, AVStream* out_stream) {
     int ret = 0;
 
-    const AVCodecContext* dec_ctx = ctx->stream_ctx_vec[stream_idx].dec_ctx;
-
     const AVCodec* encoder = avcodec_find_encoder_by_name(enc_name);
     if (!encoder) {
         const char* default_enc = "libx264";
@@ -196,6 +188,7 @@ int init_encoder(const PXMediaContext* ctx, const char* enc_name, AVDictionary**
 
     ctx->stream_ctx_vec[stream_idx].enc_ctx = enc_ctx;
 
+    const AVCodecContext* dec_ctx = ctx->stream_ctx_vec[stream_idx].dec_ctx;
     enc_ctx->time_base = av_inv_q(dec_ctx->framerate);
     enc_ctx->width = dec_ctx->width;
     enc_ctx->height = dec_ctx->height;
