@@ -15,8 +15,6 @@
 
 #define PX_VERSION "0.1.1"
 
-#define PX_HELP_PRINTED 2
-
 typedef struct PXSettings {
 
     char** input_files;
