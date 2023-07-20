@@ -20,6 +20,7 @@ typedef struct PXSettings {
     char** input_files;
     int n_input_files;
 
+    // url because it can also be a folder
     char* output_url;
 
     char* enc_name_v;
