@@ -2,9 +2,6 @@
 
 #include <assert.h>
 #include <stdbool.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
 
 #if defined(__unix__) || (defined(__APPLE__) && defined(__MACH__))
 
@@ -37,8 +34,8 @@ int get_available_threads(void);
  * uses strerror_r on unix and FormatMessage on windows
  *
  * @param dest buffer to write to, should be at least 256 bytes
- * @param err error code to convert, if 0, the errno or GetLastError() is used
- * @return dest
+ * @param err error code to convert, if 0, errno or GetLastError() is used
+ * @return `dest`
  */
 char* last_errstr(char* dest, int err);
 
@@ -46,7 +43,7 @@ char* last_errstr(char* dest, int err);
 int create_folder(char* path);
 
 /**
- * get the basename of a path
+ * get the basename of `path`
  * @return pointer to the start of the basename in the path
  */
 char* get_basename(const char* path);
@@ -57,22 +54,16 @@ void sleep_ms(int ms);
 // assert with block on failure
 #define assert_or(x) for (; !(x); assert(x))
 
-// print an error message
+// print an error message about a failed allocation
 void oom(size_t alloc_size);
 
-// check if a character is a digit
-bool is_digit(char c);
-
-// check if a string is an integer, ie. only digits
-bool is_int(char* str);
-
-// ceil(a / b)
+// ceil(`a` / `b`)
 int ceil_div(int a, int b);
 
 // if `*ptr` is not NULL, free it and set it to NULL
 void free_s(void* ptr);
 
-// check if a file exists
+// check if `path` exists
 bool file_exists(char* path);
 
 /**

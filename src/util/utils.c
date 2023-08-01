@@ -1,4 +1,6 @@
 #include "utils.h"
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 void oom(size_t alloc_size) {
@@ -9,26 +11,10 @@ char* get_basename(const char* path) {
     return strrchr(path, *PATH_SEP);
 }
 
-bool is_digit(char c) {
-    return c >= '0' && c <= '9';
-}
-
-bool is_int(char* str) {
-
-    while (*str) {
-        if (!is_digit(*str++)) {
-            return false;
-        }
-    }
-
-    return true;
-}
-
 int ceil_div(int a, int b) {
     return 1 + (a - 1) / b;
 }
 
-// if `*ptr` is not NULL, free it and set it to NULL
 void free_s(void* ptr) {
 
     void** p = (void**)ptr;
