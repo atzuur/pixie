@@ -54,7 +54,7 @@ static inline bool is_value(const char* str) {
 }
 
 static inline int missing_value(const char* opt) {
-    px_log(PX_LOG_ERROR, "Missing value for option \"%s\"\n", opt);
+    $px_log(PX_LOG_ERROR, "Missing value for option \"%s\"\n", opt);
     return 1;
 }
 
@@ -75,7 +75,7 @@ int px_parse_args(int argc, char** argv, PXSettings* s) {
 
         const char* opt = argv[i];
         if (!is_opt(opt)) {
-            px_log(PX_LOG_WARN, "Ignoring argument \"%s\"\n", opt);
+            $px_log(PX_LOG_WARN, "Ignoring argument \"%s\"\n", opt);
             continue;
         }
 
@@ -124,8 +124,8 @@ int px_parse_args(int argc, char** argv, PXSettings* s) {
 
             int ret = av_dict_parse_string(&s->enc_opts_v, settings, "=", ":", 0);
             if (ret < 0) {
-                px_log(PX_LOG_ERROR, "Failed to parse video encoder settings \"%s\": %s (%d)\n", settings,
-                       av_err2str(ret), ret);
+                $px_log(PX_LOG_ERROR, "Failed to parse video encoder settings \"%s\": %s (%d)\n", settings,
+                        av_err2str(ret), ret);
                 return ret;
             }
 
@@ -145,14 +145,14 @@ int px_parse_args(int argc, char** argv, PXSettings* s) {
                 s->loglevel = px_loglevel_from_str(value);
 
             if (s->loglevel < 0 || s->loglevel >= PX_LOG_COUNT) {
-                px_log(PX_LOG_ERROR, "Invalid log level: \"%s\"\n", value);
+                $px_log(PX_LOG_ERROR, "Invalid log level: \"%s\"\n", value);
                 return 1;
             }
 
             continue;
         }
 
-        px_log(PX_LOG_WARN, "Ignoring unknown option \"%s\"\n", opt);
+        $px_log(PX_LOG_WARN, "Ignoring unknown option \"%s\"\n", opt);
     }
 
     return ret;

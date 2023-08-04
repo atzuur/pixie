@@ -44,13 +44,13 @@ int px_main(PXSettings s) {
 
         char* current_file = pxc.settings.input_files[pxc.input_idx];
         if (!file_exists(current_file)) {
-            px_log(PX_LOG_ERROR, "File \"%s\" does not exist\n", current_file);
+            $px_log(PX_LOG_ERROR, "File \"%s\" does not exist\n", current_file);
             ret = AVERROR(ENOENT);
             break;
         }
 
         if (strcmp(current_file, pxc.settings.output_url) == 0) {
-            px_log(PX_LOG_ERROR, "Input and output files cannot be the same\n");
+            $px_log(PX_LOG_ERROR, "Input and output files cannot be the same\n");
             ret = AVERROR(EINVAL);
             break;
         }
@@ -59,8 +59,8 @@ int px_main(PXSettings s) {
 
         while (!pxc.transc_thread.done) {
             sleep_ms(10);
-            px_log(PX_LOG_PROGRESS, "Decoded %lu frames, dropped %lu frames, encoded %lu frames\r",
-                   pxc.frames_decoded, pxc.decoded_frames_dropped, pxc.frames_output);
+            $px_log(PX_LOG_PROGRESS, "Decoded %lu frames, dropped %lu frames, encoded %lu frames\r",
+                    pxc.frames_decoded, pxc.decoded_frames_dropped, pxc.frames_output);
         }
 
         putchar('\n');
@@ -69,8 +69,8 @@ int px_main(PXSettings s) {
         px_thrd_join(&pxc.transc_thread, &transc_ret);
 
         if (transc_ret) {
-            px_log(PX_LOG_ERROR, "Error occurred while processing file \"%s\" (stream index %d)\n",
-                   current_file, pxc.stream_idx);
+            $px_log(PX_LOG_ERROR, "Error occurred while processing file \"%s\" (stream index %d)\n",
+                    current_file, pxc.stream_idx);
             ret = transc_ret;
             break;
         }
@@ -98,7 +98,7 @@ int px_transcode(PXContext* pxc) {
             ret = 0;
             break;
         } else if (ret < 0) {
-            lav_throw_msg("av_read_frame", ret);
+            $lav_throw_msg("av_read_frame", ret);
             goto end;
         }
 
@@ -112,7 +112,7 @@ int px_transcode(PXContext* pxc) {
         if (stream_type != AVMEDIA_TYPE_VIDEO) {
             ret = av_interleaved_write_frame(pxc->media_ctx.ofmt_ctx, packet);
             if (ret < 0) {
-                lav_throw_msg("av_interleaved_write_frame", ret);
+                $lav_throw_msg("av_interleaved_write_frame", ret);
                 goto end;
             }
             continue;
@@ -137,7 +137,7 @@ int px_transcode(PXContext* pxc) {
 
         ret = av_frame_make_writable(frame);
         if (ret < 0) {
-            lav_throw_msg("av_frame_make_writable", ret);
+            $lav_throw_msg("av_frame_make_writable", ret);
             goto end;
         }
 
@@ -151,7 +151,7 @@ int px_transcode(PXContext* pxc) {
 
             ret = fltr->apply(fltr);
             if (ret < 0) {
-                px_log(PX_LOG_ERROR, "Failed to apply filter \"%s\"\n", fltr->name);
+                $px_log(PX_LOG_ERROR, "Failed to apply filter \"%s\"\n", fltr->name);
                 goto end;
             }
         }
@@ -177,14 +177,14 @@ int px_transcode(PXContext* pxc) {
 
         ret = flush_encoder(&pxc->media_ctx, packet, i);
         if (ret < 0 && ret != AVERROR_EOF) {
-            px_log(PX_LOG_ERROR, "Failed to flush encoder\n");
+            $px_log(PX_LOG_ERROR, "Failed to flush encoder\n");
             goto end;
         }
     }
 
     ret = av_write_trailer(pxc->media_ctx.ofmt_ctx);
     if (ret < 0)
-        lav_throw_msg("av_write_trailer", ret);
+        $lav_throw_msg("av_write_trailer", ret);
 
 end:
     px_transcode_free(&packet, &frame);
@@ -210,13 +210,13 @@ int px_transcode_init(PXContext* pxc, AVPacket** packet, AVFrame** frame) {
 
     ret = init_input(&pxc->media_ctx, in_file);
     if (ret) {
-        px_log(PX_LOG_ERROR, "Failed to open input file \"%s\": %s (%d)\n", in_file, av_err2str(ret), ret);
+        $px_log(PX_LOG_ERROR, "Failed to open input file \"%s\": %s (%d)\n", in_file, av_err2str(ret), ret);
         return ret;
     }
 
     ret = init_output(&pxc->media_ctx, out_url, &pxc->settings);
     if (ret) {
-        px_log(PX_LOG_ERROR, "Failed to open output file \"%s\": %s (%d)\n", out_url, av_err2str(ret), ret);
+        $px_log(PX_LOG_ERROR, "Failed to open output file \"%s\": %s (%d)\n", out_url, av_err2str(ret), ret);
         return ret;
     }
 
@@ -224,7 +224,7 @@ int px_transcode_init(PXContext* pxc, AVPacket** packet, AVFrame** frame) {
         PXFilter* fltr = &pxc->fltr_ctx.filters[i];
         ret = fltr->init(fltr, NULL); // TODO: pass settings
         if (ret) {
-            px_log(PX_LOG_ERROR, "Failed to initialize filter \"%s\"\n", fltr->name);
+            $px_log(PX_LOG_ERROR, "Failed to initialize filter \"%s\"\n", fltr->name);
             return ret;
         }
     }
@@ -254,12 +254,12 @@ int px_settings_init(int argc, char** argv, PXSettings* s) {
         return ret == PX_HELP_PRINTED ? 0 : ret;
 
     if (!s->n_input_files) {
-        px_log(PX_LOG_ERROR, "No input file specified\n");
+        $px_log(PX_LOG_ERROR, "No input file specified\n");
         return 1;
     }
 
     if (!s->output_url) {
-        px_log(PX_LOG_ERROR, "No output file specified\n");
+        $px_log(PX_LOG_ERROR, "No output file specified\n");
         return 1;
     }
 
@@ -276,7 +276,7 @@ int px_settings_init(int argc, char** argv, PXSettings* s) {
         if (!create_folder(s->output_url)) {
             char err[256];
             last_errstr(err, 0);
-            px_log(PX_LOG_ERROR, "Failed to create output directory: %s (%d)\n", err, last_errcode());
+            $px_log(PX_LOG_ERROR, "Failed to create output directory: %s (%d)\n", err, $last_errcode());
             return 1;
         }
     }

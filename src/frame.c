@@ -42,19 +42,19 @@ fail:
 int px_frame_init(PXFrame* frame) {
 
     if (frame->width <= 0 || frame->height <= 0) {
-        px_log(PX_LOG_ERROR, "Invalid frame dimensions: %dx%d\n", frame->width, frame->height);
+        $px_log(PX_LOG_ERROR, "Invalid frame dimensions: %dx%d\n", frame->width, frame->height);
         return AVERROR(EINVAL);
     }
 
     const AVPixFmtDescriptor* fmt_desc = av_pix_fmt_desc_get(frame->pix_fmt);
     if (!fmt_desc) {
-        px_log(PX_LOG_ERROR, "Unknown pixel format: %d\n", frame->pix_fmt);
+        $px_log(PX_LOG_ERROR, "Unknown pixel format: %d\n", frame->pix_fmt);
         return AVERROR(EINVAL);
     }
 
     // any pixel format that is not planar is unsupported
     if (!(fmt_desc->flags & AV_PIX_FMT_FLAG_PLANAR)) {
-        px_log(PX_LOG_ERROR, "Unsupported pixel format: %s\n", av_get_pix_fmt_name(frame->pix_fmt));
+        $px_log(PX_LOG_ERROR, "Unsupported pixel format: %s\n", av_get_pix_fmt_name(frame->pix_fmt));
         return AVERROR(EINVAL);
     }
 
@@ -221,7 +221,7 @@ void px_fb_free(PXFrameBuffer* fb) {
 int px_fb_add(PXFrameBuffer* fb, const PXFrame* frame) {
 
     if (fb->num_frames >= fb->max_frames) {
-        px_log(PX_LOG_ERROR, "Frame buffer at %p is full (%d/%d)\n", fb, fb->num_frames, fb->max_frames);
+        $px_log(PX_LOG_ERROR, "Frame buffer at %p is full (%d/%d)\n", fb, fb->num_frames, fb->max_frames);
         return AVERROR(ENOMEM);
     }
 

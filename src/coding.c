@@ -33,13 +33,13 @@ int init_input(PXMediaContext* ctx, const char* filename) {
 
     ret = avformat_open_input(&ctx->ifmt_ctx, filename, NULL, NULL);
     if (ret < 0) {
-        lav_throw_msg("avformat_open_input", ret);
+        $lav_throw_msg("avformat_open_input", ret);
         return ret;
     }
 
     ret = avformat_find_stream_info(ctx->ifmt_ctx, NULL);
     if (ret < 0) {
-        lav_throw_msg("avformat_find_stream_info", ret);
+        $lav_throw_msg("avformat_find_stream_info", ret);
         return ret;
     }
 
@@ -71,7 +71,7 @@ int init_input(PXMediaContext* ctx, const char* filename) {
     }
 
     if (!streams_found) {
-        px_log(PX_LOG_ERROR, "No video streams found in file \"%s\"\n", filename);
+        $px_log(PX_LOG_ERROR, "No video streams found in file \"%s\"\n", filename);
         return AVERROR_INVALIDDATA;
     }
 
@@ -84,7 +84,7 @@ int init_output(PXMediaContext* ctx, const char* filename, PXSettings* s) {
 
     ret = avformat_alloc_output_context2(&ctx->ofmt_ctx, NULL, NULL, filename);
     if (ret < 0) {
-        lav_throw_msg("avformat_alloc_output_context2", ret);
+        $lav_throw_msg("avformat_alloc_output_context2", ret);
         return ret;
     }
 
@@ -93,7 +93,7 @@ int init_output(PXMediaContext* ctx, const char* filename, PXSettings* s) {
 
         AVStream* ostream = avformat_new_stream(ctx->ofmt_ctx, NULL);
         if (!ostream) {
-            lav_throw_msg("avformat_new_stream", ret);
+            $lav_throw_msg("avformat_new_stream", ret);
             return ret;
         }
 
@@ -108,7 +108,7 @@ int init_output(PXMediaContext* ctx, const char* filename, PXSettings* s) {
         } else {
             ret = avcodec_parameters_copy(ostream->codecpar, ctx->ifmt_ctx->streams[i]->codecpar);
             if (ret < 0) {
-                lav_throw_msg("avcodec_parameters_copy", ret);
+                $lav_throw_msg("avcodec_parameters_copy", ret);
                 return ret;
             }
             ostream->time_base = ctx->ifmt_ctx->streams[i]->time_base;
@@ -121,14 +121,14 @@ int init_output(PXMediaContext* ctx, const char* filename, PXSettings* s) {
     if (!(ctx->ofmt_ctx->oformat->flags & AVFMT_NOFILE)) {
         ret = avio_open(&ctx->ofmt_ctx->pb, filename, AVIO_FLAG_WRITE);
         if (ret < 0) {
-            lav_throw_msg("avio_open", ret);
+            $lav_throw_msg("avio_open", ret);
             return ret;
         }
     }
 
     ret = avformat_write_header(ctx->ofmt_ctx, NULL);
     if (ret < 0) {
-        lav_throw_msg("avformat_write_header", ret);
+        $lav_throw_msg("avformat_write_header", ret);
         return ret;
     }
 
@@ -142,7 +142,7 @@ int init_decoder(PXMediaContext* ctx, unsigned stream_idx) {
 
     const AVCodec* decoder = avcodec_find_decoder(ctx->ifmt_ctx->streams[stream_idx]->codecpar->codec_id);
     if (!decoder) {
-        px_log(PX_LOG_ERROR, "Failed to find decoder for stream %d\n", stream_idx);
+        $px_log(PX_LOG_ERROR, "Failed to find decoder for stream %d\n", stream_idx);
         return AVERROR_DECODER_NOT_FOUND;
     }
 
@@ -156,13 +156,13 @@ int init_decoder(PXMediaContext* ctx, unsigned stream_idx) {
 
     ret = avcodec_parameters_to_context(dec_ctx, dec_params);
     if (ret < 0) {
-        lav_throw_msg("avcodec_parameters_to_context", ret);
+        $lav_throw_msg("avcodec_parameters_to_context", ret);
         return ret;
     }
 
     ret = avcodec_open2(dec_ctx, decoder, NULL);
     if (ret < 0) {
-        lav_throw_msg("avcodec_open2", ret);
+        $lav_throw_msg("avcodec_open2", ret);
         return ret;
     }
 
@@ -199,13 +199,13 @@ int init_encoder(const PXMediaContext* ctx, const char* enc_name, AVDictionary**
 
     ret = avcodec_parameters_from_context(out_stream->codecpar, enc_ctx);
     if (ret < 0) {
-        lav_throw_msg("avcodec_parameters_from_context", ret);
+        $lav_throw_msg("avcodec_parameters_from_context", ret);
         return ret;
     }
 
     ret = avcodec_open2(enc_ctx, encoder, enc_opts);
     if (ret < 0) {
-        lav_throw_msg("avcodec_open2", ret);
+        $lav_throw_msg("avcodec_open2", ret);
         return ret;
     }
 
@@ -222,7 +222,7 @@ int decode_frame(const PXStreamContext* ctx, AVFrame* frame, AVPacket* packet) {
             case AVERROR_EOF:
                 return ret;
             default:
-                lav_throw_msg("avcodec_send_packet", ret);
+                $lav_throw_msg("avcodec_send_packet", ret);
                 return ret;
         }
     }
@@ -235,7 +235,7 @@ int decode_frame(const PXStreamContext* ctx, AVFrame* frame, AVPacket* packet) {
             case AVERROR_EOF:
                 return ret;
             default:
-                lav_throw_msg("avcodec_receive_frame", ret);
+                $lav_throw_msg("avcodec_receive_frame", ret);
                 return ret;
         }
     }
@@ -261,7 +261,7 @@ int encode_frame(const PXMediaContext* ctx, AVFrame* frame, AVPacket* packet, un
                 ret = 0;
                 break;
             default:
-                lav_throw_msg("avcodec_send_frame", ret);
+                $lav_throw_msg("avcodec_send_frame", ret);
                 return ret;
         }
     }
@@ -274,7 +274,7 @@ int encode_frame(const PXMediaContext* ctx, AVFrame* frame, AVPacket* packet, un
             case AVERROR_EOF:
                 return ret;
             default:
-                lav_throw_msg("avcodec_receive_packet", ret);
+                $lav_throw_msg("avcodec_receive_packet", ret);
                 return ret;
         }
     }
@@ -286,7 +286,7 @@ int encode_frame(const PXMediaContext* ctx, AVFrame* frame, AVPacket* packet, un
 
     ret = av_interleaved_write_frame(ctx->ofmt_ctx, packet);
     if (ret < 0) {
-        lav_throw_msg("av_interleaved_write_frame", ret);
+        $lav_throw_msg("av_interleaved_write_frame", ret);
         return ret;
     }
 

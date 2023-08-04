@@ -9,7 +9,7 @@
 #include <unistd.h>
 
 #define PATH_SEP "/"
-#define last_errcode() errno
+#define $last_errcode() errno
 
 #elif defined(_WIN32)
 
@@ -17,7 +17,7 @@
 #include <windows.h>
 
 #define PATH_SEP "\\"
-#define last_errcode() GetLastError()
+#define $last_errcode() GetLastError()
 
 #define access _access
 #define F_OK 0
@@ -40,7 +40,7 @@ int get_available_threads(void);
 char* last_errstr(char* dest, int err);
 
 // not recursive! (no parent folders are created)
-int create_folder(char* path);
+int create_folder(const char* path);
 
 /**
  * get the basename of `path`
@@ -52,7 +52,7 @@ char* get_basename(const char* path);
 void sleep_ms(int ms);
 
 // assert with block on failure
-#define assert_or(x) for (; !(x); assert(x))
+#define $assert_or(x) for (; !(x); assert(x))
 
 // print an error message about a failed allocation
 void oom(size_t alloc_size);
@@ -64,13 +64,13 @@ int ceil_div(int a, int b);
 void free_s(void* ptr);
 
 // check if `path` exists
-bool file_exists(char* path);
+bool file_exists(const char* path);
 
 /**
  * print the last error location, code and message to stderr
  * @param func (char*) name of the function that failed
  * @param err (int) error code, if 0, the last error code is used
  */
-#define throw_msg(func, err)                                                      \
-    fprintf(stderr, "%s() failed at %s:%d : %s (%d)\n", __FILE__, __LINE__, func, \
+#define $throw_msg(func, err)                                                          \
+    fprintf(stderr, "%s() failed at %s:%d : %s (code %d)\n", __FILE__, __LINE__, func, \
             last_errstr(&(char[256]), err), err)

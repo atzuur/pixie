@@ -33,7 +33,7 @@ static inline const char* c11_thrd_strerror(int err) {
     }
 }
 
-#define c11_thrd_throw_msg(func, err)                                                  \
+#define $c11_thrd_throw_msg(func, err)                                                 \
     fprintf(stderr, "%s() failed at %s:%d : %s (code %d)\n", func, __FILE__, __LINE__, \
             c11_thrd_strerror(err), err)
 

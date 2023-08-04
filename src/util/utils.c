@@ -25,7 +25,7 @@ void free_s(void* ptr) {
     }
 }
 
-bool file_exists(char* path) {
+bool file_exists(const char* path) {
     return access(path, F_OK) == 0;
 }
 
@@ -48,7 +48,7 @@ char* last_errstr(char* dest, int err) {
     return dest;
 }
 
-int create_folder(char* path) {
+int create_folder(const char* path) {
     int ret = mkdir(path, 0777);
     if (ret < 0)
         return errno != EEXIST;
@@ -79,7 +79,7 @@ char* last_errstr(char* dest, int err) {
     return dest;
 }
 
-int create_folder(char* path) {
+int create_folder(const char* path) {
     if (!CreateDirectoryA(path, 0))
         return GetLastError() != ERROR_ALREADY_EXISTS;
     return 1;
