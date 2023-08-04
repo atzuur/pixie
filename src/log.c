@@ -24,7 +24,8 @@ void px_log_msg(PXLogLevel level, const char* msg, ...) {
     char* pink = PX_LOG_C(213);
     char* msg_color = PX_LOG_C(px_log_colors[level]);
 
-    snprintf(prefix, sizeof prefix, "[%spixie%s] %s", pink, PX_RESET, msg_color);
+    snprintf(prefix, sizeof prefix, "[%spixie %s// %s%s%s] %s", pink, PX_RESET, msg_color,
+             px_log_names[level], PX_RESET, msg_color);
 
     fprintf(stream, "%s", prefix);
     vfprintf(stream, msg, args);
