@@ -299,7 +299,8 @@ void px_ctx_free(PXContext* pxc) {
 
 void px_settings_free(PXSettings* s) {
 
-    free_s(&s->output_url);
+    if (s->n_input_files > 1)
+        free_s(&s->output_url);
 
     if (s->enc_opts_v)
         av_dict_free(&s->enc_opts_v);

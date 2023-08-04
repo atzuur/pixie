@@ -81,7 +81,6 @@ int init_input(PXMediaContext* ctx, const char* filename) {
 int init_output(PXMediaContext* ctx, const char* filename, PXSettings* s) {
 
     int ret = 0;
-    char* enc_name = NULL;
 
     ret = avformat_alloc_output_context2(&ctx->ofmt_ctx, NULL, NULL, filename);
     if (ret < 0) {
@@ -102,7 +101,7 @@ int init_output(PXMediaContext* ctx, const char* filename, PXSettings* s) {
 
         if (stream_type == AVMEDIA_TYPE_VIDEO) {
 
-            ret = init_encoder(ctx, enc_name, &s->enc_opts_v, i, ostream);
+            ret = init_encoder(ctx, s->enc_name_v, &s->enc_opts_v, i, ostream);
             if (ret < 0)
                 return ret;
 

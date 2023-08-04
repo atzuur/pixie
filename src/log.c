@@ -1,6 +1,6 @@
 #include "log.h"
 
-PXLogLevel px_global_loglevel = PX_LOG_PROGRESS; // default
+PXLogLevel px_global_loglevel = PX_LOG_WARN; // default
 
 const char* const px_log_names[] = {
     "quiet", "error", "progress", "warn", "info", "verbose",

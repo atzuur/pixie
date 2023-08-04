@@ -18,23 +18,18 @@ void px_print_info(const char* prog_name, bool full) {
             "  -h                          Print this help message");
 }
 
-static inline int missing_value(const char* opt) {
-    px_log(PX_LOG_ERROR, "Missing value for option %s", opt);
-    return 1;
-}
+static inline bool opt_matches(const char* opt, const char* long_opt, const char* short_opt) {
 
-static inline bool arg_matches(const char* arg, const char* long_arg, const char* short_arg) {
-
-    if (strcmp(arg, long_arg) == 0)
+    if (strcmp(opt, long_opt) == 0)
         return true;
 
-    if (short_arg && strcmp(arg, short_arg) == 0)
+    if (short_opt && strcmp(opt, short_opt) == 0)
         return true;
 
     return false;
 }
 
-static inline bool is_arg(const char* str) {
+static inline bool is_opt(const char* str) {
 
     int len = strlen(str);
     if (len < 2) // has to be at least "-x"
@@ -55,7 +50,12 @@ static inline bool is_arg(const char* str) {
 }
 
 static inline bool is_value(const char* str) {
-    return *str && !is_arg(str);
+    return str && *str && !is_opt(str);
+}
+
+static inline int missing_value(const char* opt) {
+    px_log(PX_LOG_ERROR, "Missing value for option \"%s\"\n", opt);
+    return 1;
 }
 
 int px_parse_args(int argc, char** argv, PXSettings* s) {
@@ -73,50 +73,86 @@ int px_parse_args(int argc, char** argv, PXSettings* s) {
 
     for (int i = 0; i < argc; i++) {
 
-        const char* arg = argv[i];
-        if (!is_arg(arg))
+        const char* opt = argv[i];
+        if (!is_opt(opt)) {
+            px_log(PX_LOG_WARN, "Ignoring argument \"%s\"\n", opt);
             continue;
+        }
 
-        // args with no value handled first
-        if (arg_matches(arg, "--help", "-h")) {
+        if (opt_matches(opt, "--help", "-h")) {
             px_print_info(argv[-1], true);
             return PX_HELP_PRINTED;
         }
 
-        char* value = argv[++i];
-        if (!is_value(value))
-            return missing_value(arg);
+        if (opt_matches(opt, "--input", "-i")) {
 
-        if (arg_matches(arg, "--input", "-i")) {
-            s->input_files = &value;
+            s->input_files = &argv[++i];
+            if (!is_value(s->input_files[0]))
+                return missing_value(opt);
+
             s->n_input_files = 1;
 
             // argv is NULL-terminated, so we iterate until we find a NULL or another arg
-            for (char** next = &value + 1; is_value(*next); next++) {
+            for (char** next = s->input_files + 1; is_value(*next); next++) {
                 s->n_input_files++;
                 i++;
             }
+
+            continue;
         }
 
-        if (arg_matches(arg, "--output", "-o"))
-            s->output_url = value;
+        if (opt_matches(opt, "--output", "-o")) {
 
-        if (arg_matches(arg, "--video-enc", "-v")) {
-            s->enc_name_v = value;
+            s->output_url = argv[++i];
+            if (!is_value(s->output_url))
+                return missing_value(opt);
 
-            const char* settings = strchr(value, ',') + 1;
+            continue;
+        }
+
+        if (opt_matches(opt, "--video-enc", "-v")) {
+
+            s->enc_name_v = argv[++i];
+            if (!is_value(s->enc_name_v))
+                return missing_value(opt);
+
+            const char* settings = strchr(s->enc_name_v, ',');
             if (!settings)
                 continue;
 
+            settings++; // skip comma
+
             int ret = av_dict_parse_string(&s->enc_opts_v, settings, "=", ":", 0);
             if (ret < 0) {
-                px_log(PX_LOG_ERROR, "Failed to parse video encoder settings \"%s\": %s (%d)", settings,
+                px_log(PX_LOG_ERROR, "Failed to parse video encoder settings \"%s\": %s (%d)\n", settings,
                        av_err2str(ret), ret);
                 return ret;
             }
+
+            continue;
         }
 
-        // TODO: implement a nicer str-to-int converter than ato* and add -l
+        if (opt_matches(opt, "--log-level", "-l")) {
+
+            const char* value = argv[++i];
+            if (!is_value(value))
+                return missing_value(opt);
+
+            AtoiResult res = checked_atoi(value);
+            if (!res.fail)
+                s->loglevel = res.value;
+            else
+                s->loglevel = px_loglevel_from_str(value);
+
+            if (s->loglevel < 0 || s->loglevel >= PX_LOG_COUNT) {
+                px_log(PX_LOG_ERROR, "Invalid log level: \"%s\"\n", value);
+                return 1;
+            }
+
+            continue;
+        }
+
+        px_log(PX_LOG_WARN, "Ignoring unknown option \"%s\"\n", opt);
     }
 
     return ret;

@@ -58,7 +58,7 @@ static inline int px_loglevel_to_av(PXLogLevel level) {
 
 static inline void px_log_set_level(PXLogLevel level) {
     if (level == PX_LOG_NONE)
-        level = PX_LOG_PROGRESS;
+        level = PX_LOG_WARN;
 
     av_log_set_level(px_loglevel_to_av(level));
     px_global_loglevel = level;

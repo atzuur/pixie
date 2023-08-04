@@ -14,6 +14,7 @@
 
 #if __STDC_VERSION__ >= 201112L && !defined(__STDC_NO_THREADS__)
 #define C11_THREADS
+#include <stdio.h>
 #include <threads.h>
 
 static inline const char* c11_thrd_strerror(int err) {
@@ -32,8 +33,9 @@ static inline const char* c11_thrd_strerror(int err) {
     }
 }
 
-#define c11_thrd_throw_msg(func, err) \
-    fprintf(stderr, "%s() failed at %s:%d : %s (%d)\n", func, __FILE__, __LINE__, c11_thrd_strerror(err), err)
+#define c11_thrd_throw_msg(func, err)                                                  \
+    fprintf(stderr, "%s() failed at %s:%d : %s (code %d)\n", func, __FILE__, __LINE__, \
+            c11_thrd_strerror(err), err)
 
 #elif defined(_WIN32) && !defined(C11_THREADS)
 #define WIN32_THREADS
