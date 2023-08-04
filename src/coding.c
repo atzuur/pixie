@@ -137,7 +137,7 @@ int init_output(PXMediaContext* ctx, const char* filename, PXSettings* s) {
 
 int init_decoder(PXMediaContext* ctx, unsigned stream_idx) {
 
-    int ret;
+    int ret = 0;
     const AVCodecParameters* dec_params = ctx->ifmt_ctx->streams[stream_idx]->codecpar;
 
     const AVCodec* decoder = avcodec_find_decoder(ctx->ifmt_ctx->streams[stream_idx]->codecpar->codec_id);
@@ -193,9 +193,6 @@ int init_encoder(const PXMediaContext* ctx, const char* enc_name, AVDictionary**
     enc_ctx->height = dec_ctx->height;
     enc_ctx->sample_aspect_ratio = dec_ctx->sample_aspect_ratio;
     enc_ctx->pix_fmt = dec_ctx->pix_fmt;
-
-    if (ctx->ofmt_ctx->oformat->flags & AVFMT_GLOBALHEADER)
-        enc_ctx->flags |= AVFMT_GLOBALHEADER;
 
     ret = avcodec_parameters_from_context(out_stream->codecpar, enc_ctx);
     if (ret < 0) {

@@ -126,8 +126,6 @@ int px_transcode(PXContext* pxc) {
             goto end;
         }
 
-        av_packet_unref(packet);
-
         if (should_skip_frame(frame)) {
             pxc->decoded_frames_dropped++;
             continue;
@@ -135,24 +133,27 @@ int px_transcode(PXContext* pxc) {
 
         pxc->frames_decoded++;
 
-        ret = av_frame_make_writable(frame);
-        if (ret < 0) {
-            $lav_throw_msg("av_frame_make_writable", ret);
-            goto end;
-        }
-
-        PXFrame px_frame = px_frame_from_av(frame);
-        px_frame_assert_correctly_converted(frame, &px_frame);
-
-        for (int i = 0; i < pxc->fltr_ctx.n_filters; i++) {
-            PXFilter* fltr = &pxc->fltr_ctx.filters[i];
-
-            fltr->frame = &px_frame;
-
-            ret = fltr->apply(fltr);
+        // filtering
+        {
+            ret = av_frame_make_writable(frame);
             if (ret < 0) {
-                $px_log(PX_LOG_ERROR, "Failed to apply filter \"%s\"\n", fltr->name);
+                $lav_throw_msg("av_frame_make_writable", ret);
                 goto end;
+            }
+
+            PXFrame px_frame = px_frame_from_av(frame);
+            px_frame_assert_correctly_converted(frame, &px_frame);
+
+            for (int i = 0; i < pxc->fltr_ctx.n_filters; i++) {
+                PXFilter* fltr = &pxc->fltr_ctx.filters[i];
+
+                fltr->frame = &px_frame;
+
+                ret = fltr->apply(fltr);
+                if (ret < 0) {
+                    $px_log(PX_LOG_ERROR, "Failed to apply filter \"%s\"\n", fltr->name);
+                    goto end;
+                }
             }
         }
 
@@ -165,9 +166,6 @@ int px_transcode(PXContext* pxc) {
         }
 
         pxc->frames_output++;
-
-        av_frame_unref(frame);
-        av_packet_unref(packet);
     }
 
     for (unsigned i = 0; i < pxc->media_ctx.ifmt_ctx->nb_streams; i++) {
@@ -210,13 +208,13 @@ int px_transcode_init(PXContext* pxc, AVPacket** packet, AVFrame** frame) {
 
     ret = init_input(&pxc->media_ctx, in_file);
     if (ret) {
-        $px_log(PX_LOG_ERROR, "Failed to open input file \"%s\": %s (%d)\n", in_file, av_err2str(ret), ret);
+        $px_log(PX_LOG_ERROR, "Failed to open input file \"%s\"\n", in_file);
         return ret;
     }
 
     ret = init_output(&pxc->media_ctx, out_url, &pxc->settings);
     if (ret) {
-        $px_log(PX_LOG_ERROR, "Failed to open output file \"%s\": %s (%d)\n", out_url, av_err2str(ret), ret);
+        $px_log(PX_LOG_ERROR, "Failed to open output file \"%s\"\n", out_url);
         return ret;
     }
 
