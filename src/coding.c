@@ -1,21 +1,23 @@
 #include "coding.h"
 #include "log.h"
+#include "pixie.h"
+#include <libavcodec/packet.h>
 
 void px_media_ctx_free(PXMediaContext* ctx) {
 
     if (ctx->ifmt_ctx) {
 
         for (unsigned i = 0; i < ctx->ifmt_ctx->nb_streams; i++) {
-            if (ctx->stream_ctx_vec[i].dec_ctx)
-                avcodec_free_context(&ctx->stream_ctx_vec[i].dec_ctx);
-            if (ctx->stream_ctx_vec[i].enc_ctx)
-                avcodec_free_context(&ctx->stream_ctx_vec[i].enc_ctx);
+            if (ctx->coding_ctx_vec[i].dec_ctx)
+                avcodec_free_context(&ctx->coding_ctx_vec[i].dec_ctx);
+            if (ctx->coding_ctx_vec[i].enc_ctx)
+                avcodec_free_context(&ctx->coding_ctx_vec[i].enc_ctx);
         }
 
         avformat_close_input(&ctx->ifmt_ctx);
     }
 
-    free_s(&ctx->stream_ctx_vec);
+    free_s(&ctx->coding_ctx_vec);
 
     if (ctx->ofmt_ctx) {
         if (!(ctx->ofmt_ctx->oformat->flags & AVFMT_NOFILE))
@@ -43,9 +45,9 @@ int init_input(PXMediaContext* ctx, const char* filename) {
         return ret;
     }
 
-    ctx->stream_ctx_vec = calloc(ctx->ifmt_ctx->nb_streams, sizeof *ctx->stream_ctx_vec);
-    if (!ctx->stream_ctx_vec) {
-        oom(sizeof *ctx->stream_ctx_vec);
+    ctx->coding_ctx_vec = calloc(ctx->ifmt_ctx->nb_streams, sizeof *ctx->coding_ctx_vec);
+    if (!ctx->coding_ctx_vec) {
+        oom(sizeof *ctx->coding_ctx_vec);
         return AVERROR(ENOMEM);
     }
 
@@ -65,7 +67,7 @@ int init_input(PXMediaContext* ctx, const char* filename) {
             if (av_log_get_level() >= AV_LOG_INFO)
                 av_dump_format(ctx->ifmt_ctx, i, filename, false);
 
-            ctx->stream_ctx_vec[i].dec_ctx->framerate =
+            ctx->coding_ctx_vec[i].dec_ctx->framerate =
                 av_guess_frame_rate(ctx->ifmt_ctx, ctx->ifmt_ctx->streams[i], NULL);
         }
     }
@@ -152,7 +154,7 @@ int init_decoder(PXMediaContext* ctx, unsigned stream_idx) {
         return AVERROR(ENOMEM);
     }
 
-    ctx->stream_ctx_vec[stream_idx].dec_ctx = dec_ctx;
+    ctx->coding_ctx_vec[stream_idx].dec_ctx = dec_ctx;
 
     ret = avcodec_parameters_to_context(dec_ctx, dec_params);
     if (ret < 0) {
@@ -185,9 +187,9 @@ int init_encoder(const PXMediaContext* ctx, const char* enc_name, AVDictionary**
         return AVERROR(ENOMEM);
     }
 
-    ctx->stream_ctx_vec[stream_idx].enc_ctx = enc_ctx;
+    ctx->coding_ctx_vec[stream_idx].enc_ctx = enc_ctx;
 
-    const AVCodecContext* dec_ctx = ctx->stream_ctx_vec[stream_idx].dec_ctx;
+    const AVCodecContext* dec_ctx = ctx->coding_ctx_vec[stream_idx].dec_ctx;
     enc_ctx->time_base = av_inv_q(dec_ctx->framerate);
     enc_ctx->width = dec_ctx->width;
     enc_ctx->height = dec_ctx->height;
@@ -209,91 +211,49 @@ int init_encoder(const PXMediaContext* ctx, const char* enc_name, AVDictionary**
     return 0;
 }
 
-int decode_frame(const PXStreamContext* ctx, AVFrame* frame, AVPacket* packet) {
-
-    int ret = 0;
-
-    ret = avcodec_send_packet(ctx->dec_ctx, packet);
-    if (ret < 0) {
-        switch (ret) {
-            case AVERROR_EOF:
-                return ret;
-            default:
-                $lav_throw_msg("avcodec_send_packet", ret);
-                return ret;
-        }
-    }
-
-    ret = avcodec_receive_frame(ctx->dec_ctx, frame);
-    if (ret < 0) {
-        switch (ret) {
-            case AVERROR(EAGAIN):
-                return decode_frame(ctx, frame, packet);
-            case AVERROR_EOF:
-                return ret;
-            default:
-                $lav_throw_msg("avcodec_receive_frame", ret);
-                return ret;
-        }
-    }
-
-    frame->pts = frame->best_effort_timestamp;
-
-    av_packet_unref(packet);
-
-    return 0;
-}
-
 int encode_frame(const PXMediaContext* ctx, AVFrame* frame, AVPacket* packet, unsigned stream_idx) {
 
     int ret = 0;
-    PXStreamContext* stc = &ctx->stream_ctx_vec[stream_idx];
+    AVCodecContext* enc_ctx = ctx->coding_ctx_vec[stream_idx].enc_ctx;
 
-    ret = avcodec_send_frame(stc->enc_ctx, frame);
+    ret = avcodec_send_frame(enc_ctx, frame);
     if (ret < 0) {
-        switch (ret) {
-            case AVERROR_EOF:
-                return ret;
-            case AVERROR(EINVAL): // should not happen
-                ret = 0;
-                break;
-            default:
-                $lav_throw_msg("avcodec_send_frame", ret);
-                return ret;
-        }
-    }
-
-    ret = avcodec_receive_packet(stc->enc_ctx, packet);
-    if (ret < 0) {
-        switch (ret) {
-            case AVERROR(EAGAIN):
-                return encode_frame(ctx, frame, packet, stream_idx);
-            case AVERROR_EOF:
-                return ret;
-            default:
-                $lav_throw_msg("avcodec_receive_packet", ret);
-                return ret;
-        }
-    }
-
-    packet->stream_index = stream_idx;
-
-    av_packet_rescale_ts(packet, ctx->ifmt_ctx->streams[stream_idx]->time_base,
-                         ctx->ofmt_ctx->streams[stream_idx]->time_base);
-
-    ret = av_interleaved_write_frame(ctx->ofmt_ctx, packet);
-    if (ret < 0) {
-        $lav_throw_msg("av_interleaved_write_frame", ret);
+        $lav_throw_msg("avcodec_send_frame", ret);
         return ret;
     }
 
-    av_frame_unref(frame);
+    while (1) {
+        ret = avcodec_receive_packet(enc_ctx, packet);
+        if (ret < 0) {
+            switch (ret) {
+                case AVERROR(EAGAIN):
+                    return 0;
+                case AVERROR_EOF:
+                    return ret;
+                default:
+                    $lav_throw_msg("avcodec_receive_packet", ret);
+                    return ret;
+            }
+        }
+
+        packet->stream_index = stream_idx;
+
+        AVRational enc_tb = enc_ctx->time_base;
+        AVRational out_tb = ctx->ofmt_ctx->streams[stream_idx]->time_base;
+        av_packet_rescale_ts(packet, enc_tb, out_tb);
+
+        ret = av_interleaved_write_frame(ctx->ofmt_ctx, packet);
+        if (ret < 0) {
+            $lav_throw_msg("av_interleaved_write_frame", ret);
+            return ret;
+        }
+    }
 
     return ret;
 }
 
 int flush_encoder(const PXMediaContext* ctx, AVPacket* packet, unsigned stream_idx) {
-    return (ctx->stream_ctx_vec[stream_idx].enc_ctx->codec->capabilities & AV_CODEC_CAP_DELAY)
+    return (ctx->coding_ctx_vec[stream_idx].enc_ctx->codec->capabilities & AV_CODEC_CAP_DELAY)
                ? encode_frame(ctx, NULL, packet, stream_idx)
                : 0;
 }

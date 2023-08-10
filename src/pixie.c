@@ -4,21 +4,6 @@
 #include "coding.h"
 #include "frame.h"
 
-static bool should_skip_frame(AVFrame* frame) {
-
-    if (frame->flags & AV_FRAME_FLAG_DISCARD)
-        return true;
-
-    static int64_t last_pts = INT64_MIN; // avoid unintentionally skipping the first frame
-    int64_t pts = frame->pts;
-
-    if (pts != AV_NOPTS_VALUE && last_pts >= pts)
-        return true;
-
-    last_pts = pts;
-    return false;
-}
-
 int px_main(PXSettings s) {
 
     int ret = 0;
@@ -104,68 +89,87 @@ int px_transcode(PXContext* pxc) {
 
         pxc->stream_idx = packet->stream_index;
 
-        PXStreamContext* stc = &pxc->media_ctx.stream_ctx_vec[pxc->stream_idx];
-
-        enum AVMediaType stream_type =
-            pxc->media_ctx.ifmt_ctx->streams[pxc->stream_idx]->codecpar->codec_type;
-
-        if (stream_type != AVMEDIA_TYPE_VIDEO) {
-            ret = av_interleaved_write_frame(pxc->media_ctx.ofmt_ctx, packet);
-            if (ret < 0) {
-                $lav_throw_msg("av_interleaved_write_frame", ret);
-                goto end;
-            }
-            continue;
-        }
-
-        ret = decode_frame(stc, frame, packet);
-        if (ret == AVERROR_EOF) {
-            ret = 0;
-            break;
-        } else if (ret < 0) {
-            goto end;
-        }
-
-        if (should_skip_frame(frame)) {
-            pxc->decoded_frames_dropped++;
-            continue;
-        }
-
-        pxc->frames_decoded++;
-
-        // filtering
+        // write non-video frames away
         {
-            ret = av_frame_make_writable(frame);
-            if (ret < 0) {
-                $lav_throw_msg("av_frame_make_writable", ret);
-                goto end;
-            }
+            enum AVMediaType stream_type =
+                pxc->media_ctx.ifmt_ctx->streams[pxc->stream_idx]->codecpar->codec_type;
 
-            PXFrame px_frame = px_frame_from_av(frame);
-            px_frame_assert_correctly_converted(frame, &px_frame);
+            if (stream_type != AVMEDIA_TYPE_VIDEO) {
 
-            for (int i = 0; i < pxc->fltr_ctx.n_filters; i++) {
-                PXFilter* fltr = &pxc->fltr_ctx.filters[i];
+                AVRational in_tb = pxc->media_ctx.ifmt_ctx->streams[packet->stream_index]->time_base;
+                AVRational out_tb = pxc->media_ctx.ofmt_ctx->streams[packet->stream_index]->time_base;
+                av_packet_rescale_ts(packet, in_tb, out_tb);
 
-                fltr->frame = &px_frame;
-
-                ret = fltr->apply(fltr);
+                ret = av_interleaved_write_frame(pxc->media_ctx.ofmt_ctx, packet);
                 if (ret < 0) {
-                    $px_log(PX_LOG_ERROR, "Failed to apply filter \"%s\"\n", fltr->name);
+                    $lav_throw_msg("av_interleaved_write_frame", ret);
                     goto end;
                 }
+                av_packet_unref(packet);
+                continue;
             }
         }
 
-        ret = encode_frame(&pxc->media_ctx, frame, packet, pxc->stream_idx);
-        if (ret == AVERROR_EOF) {
-            ret = 0;
-            break;
-        } else if (ret < 0) {
+        AVCodecContext* dec_ctx = pxc->media_ctx.coding_ctx_vec[pxc->stream_idx].dec_ctx;
+
+        AVRational in_tb = pxc->media_ctx.ifmt_ctx->streams[packet->stream_index]->time_base;
+        AVRational dec_tb = dec_ctx->time_base;
+
+        av_packet_rescale_ts(packet, in_tb, dec_tb);
+
+        ret = avcodec_send_packet(dec_ctx, packet);
+        if (ret < 0)
             goto end;
+
+        while (ret >= 0) {
+            ret = avcodec_receive_frame(dec_ctx, frame);
+            if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
+                ret = 0;
+                break;
+            } else if (ret < 0) {
+                $lav_throw_msg("avcodec_receive_frame", ret);
+                goto end;
+            }
+            frame->pts = frame->best_effort_timestamp;
+            pxc->frames_decoded++;
+
+            /* filtering
+            {
+                ret = av_frame_make_writable(frame);
+                if (ret < 0) {
+                    $lav_throw_msg("av_frame_make_writable", ret);
+                    goto end;
+                }
+
+                PXFrame px_frame = px_frame_from_av(frame);
+                px_frame_assert_correctly_converted(frame, &px_frame);
+
+                for (int i = 0; i < pxc->fltr_ctx.n_filters; i++) {
+                    PXFilter* fltr = &pxc->fltr_ctx.filters[i];
+
+                    fltr->frame = &px_frame;
+
+                    ret = fltr->apply(fltr);
+                    if (ret < 0) {
+                        $px_log(PX_LOG_ERROR, "Failed to apply filter \"%s\"\n", fltr->name);
+                        goto end;
+                    }
+                }
+            }
+            */
+
+            ret = encode_frame(&pxc->media_ctx, frame, packet, pxc->stream_idx);
+            if (ret == AVERROR_EOF) {
+                ret = 0;
+                break;
+            } else if (ret < 0) {
+                goto end;
+            }
+            av_frame_unref(frame);
+            pxc->frames_output++;
         }
 
-        pxc->frames_output++;
+        av_packet_unref(packet);
     }
 
     for (unsigned i = 0; i < pxc->media_ctx.ifmt_ctx->nb_streams; i++) {

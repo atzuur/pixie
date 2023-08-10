@@ -34,19 +34,19 @@ typedef struct PXSettings {
 
 } PXSettings;
 
-typedef struct PXStreamContext {
+typedef struct PXCodingContext {
 
     AVCodecContext* dec_ctx;
     AVCodecContext* enc_ctx;
 
-} PXStreamContext;
+} PXCodingContext;
 
 typedef struct PXMediaContext {
 
     AVFormatContext* ifmt_ctx;
     AVFormatContext* ofmt_ctx;
 
-    PXStreamContext* stream_ctx_vec;
+    PXCodingContext* coding_ctx_vec;
 
 } PXMediaContext;
 
