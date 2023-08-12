@@ -77,7 +77,6 @@ int px_transcode(PXContext* pxc) {
         goto end;
 
     while (1) {
-
         ret = av_read_frame(pxc->media_ctx.ifmt_ctx, packet);
         if (ret == AVERROR_EOF) {
             ret = 0;
@@ -110,19 +109,18 @@ int px_transcode(PXContext* pxc) {
             }
         }
 
-        AVCodecContext* dec_ctx = pxc->media_ctx.coding_ctx_vec[pxc->stream_idx].dec_ctx;
+        PXCodingContext* cctx = &pxc->media_ctx.coding_ctx_vec[pxc->stream_idx];
 
         AVRational in_tb = pxc->media_ctx.ifmt_ctx->streams[packet->stream_index]->time_base;
-        AVRational dec_tb = dec_ctx->time_base;
+        AVRational enc_tb = cctx->enc_ctx->time_base;
+        av_packet_rescale_ts(packet, in_tb, enc_tb);
 
-        av_packet_rescale_ts(packet, in_tb, dec_tb);
-
-        ret = avcodec_send_packet(dec_ctx, packet);
+        ret = avcodec_send_packet(cctx->dec_ctx, packet);
         if (ret < 0)
             goto end;
 
         while (ret >= 0) {
-            ret = avcodec_receive_frame(dec_ctx, frame);
+            ret = avcodec_receive_frame(cctx->dec_ctx, frame);
             if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
                 ret = 0;
                 break;
