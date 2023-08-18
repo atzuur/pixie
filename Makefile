@@ -1,7 +1,7 @@
 CC = gcc
 BIN = pixie
 CFLAGS = -Wall -Wextra -Wpedantic -Wno-gnu-zero-variadic-macro-arguments
-CFLAGS_DEBUG = -g3 -fsanitize=address,undefined
+CFLAGS_DEBUG = -ggdb -fsanitize=address,undefined
 CFLAGS_RELEASE = -O3 -flto
 
 LIBS = $(shell pkg-config --cflags --libs libavcodec libavformat libavutil)

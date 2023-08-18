@@ -1,6 +1,7 @@
 #include "cli.h"
 #include "log.h"
 #include "util/strconv.h"
+#include <ctype.h>
 
 void px_print_info(const char* prog_name, bool full) {
 
@@ -103,8 +104,9 @@ int px_parse_args(int argc, char** argv, PXSettings* s) {
 
         if (opt_matches(opt, "--output", "-o")) {
 
-            s->output_url = argv[++i];
-            if (!is_value(s->output_url))
+            // folder check done later
+            s->output_file = strdup(argv[++i]);
+            if (!is_value(s->output_file))
                 return missing_value(opt);
 
             continue;

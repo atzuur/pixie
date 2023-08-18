@@ -1,20 +1,44 @@
 #pragma once
 
-#include "pixie.h"
+#include "settings.h"
+
+#include <libavcodec/avcodec.h>
+#include <libavformat/avformat.h>
+
+typedef struct PXCodingContext {
+
+    AVCodecContext* dec_ctx;
+    AVCodecContext* enc_ctx;
+
+} PXCodingContext;
+
+// context for processing a media file
+typedef struct PXMediaContext {
+
+    AVFormatContext* ifmt_ctx;
+    AVFormatContext* ofmt_ctx;
+
+    // index of the stream currently being processed, -1 if none
+    int stream_idx;
+
+    // context for transcoding each stream
+    PXCodingContext* coding_ctx_arr;
+
+    uint64_t frames_decoded;
+    uint64_t decoded_frames_dropped;
+    uint64_t frames_output;
+
+} PXMediaContext;
 
 #define $lav_throw_msg(func, err)                                                            \
     $px_log(PX_LOG_ERROR, "%s() failed at %s:%d : %s (code %d)\n", func, __FILE__, __LINE__, \
             av_err2str(err), err)
 
+int px_media_ctx_init(PXMediaContext* ctx, PXSettings* s, int input_idx);
 void px_media_ctx_free(PXMediaContext* ctx);
 
-int init_input(PXMediaContext* ctx, const char* filename);
-int init_output(PXMediaContext* ctx, const char* filename, PXSettings* s);
+int px_read_video_frame(PXMediaContext* ctx, AVPacket* pkt);
+int px_encode_frame(PXMediaContext* ctx, const AVFrame* frame);
 
-int init_decoder(PXMediaContext* ctx, unsigned stream_idx);
-int init_encoder(const PXMediaContext* ctx, const char* enc_name, AVDictionary** enc_opts,
-                 unsigned stream_idx, AVStream* out_stream);
-
-int encode_frame(const PXMediaContext* ctx, AVFrame* frame, AVPacket* packet, unsigned stream_idx);
-
-int flush_encoder(const PXMediaContext* ctx, AVPacket* packet, unsigned stream_idx);
+int px_flush_encoder(PXMediaContext* ctx);
+int px_flush_decoder(PXMediaContext* ctx);

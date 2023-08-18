@@ -12,3 +12,10 @@ typedef struct PXFilter {
     char* name;
 
 } PXFilter;
+
+typedef struct PXFilterContext {
+
+    PXFilter* filters;
+    int n_filters;
+
+} PXFilterContext;

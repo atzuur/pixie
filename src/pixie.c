@@ -1,8 +1,24 @@
 #include "pixie.h"
 #include "../tests/test_filter.c"
-#include "cli.h"
-#include "coding.h"
-#include "frame.h"
+#include "util/utils.h"
+
+// make `*path` point to a string containing `folder_name` + PATH_SEP + `filename`
+static int scroll_next_filename(char** path, const char* folder_name, const char* filename) {
+    size_t out_path_len = strlen(folder_name) + sizeof PATH_SEP + strlen(filename);
+
+    *path = realloc(*path, out_path_len + 1);
+    if (!*path) {
+        oom(out_path_len + 1);
+        return AVERROR(ENOMEM);
+    }
+
+    memset(*path, 0, out_path_len + 1);
+    strcat(*path, folder_name);
+    strcat(*path, PATH_SEP);
+    strcat(*path, filename);
+
+    return 0;
+}
 
 int px_main(PXSettings s) {
 
@@ -20,6 +36,15 @@ int px_main(PXSettings s) {
         .fltr_ctx = {.filters = &test_fltr, .n_filters = 1},
     };
 
+    for (int i = 0; i < pxc.fltr_ctx.n_filters; i++) {
+        PXFilter* fltr = &pxc.fltr_ctx.filters[i];
+        ret = fltr->init(fltr, NULL); // TODO: pass settings
+        if (ret < 0) {
+            $px_log(PX_LOG_ERROR, "Failed to initialize filter \"%s\"\n", fltr->name);
+            return ret;
+        }
+    }
+
     pxc.transc_thread = (PXThread) {
         .func = (PXThreadFunc)px_transcode,
         .args = &pxc,
@@ -27,25 +52,26 @@ int px_main(PXSettings s) {
 
     for (pxc.input_idx = 0; pxc.input_idx < pxc.settings.n_input_files; pxc.input_idx++) {
 
-        char* current_file = pxc.settings.input_files[pxc.input_idx];
-        if (!file_exists(current_file)) {
-            $px_log(PX_LOG_ERROR, "File \"%s\" does not exist\n", current_file);
-            ret = AVERROR(ENOENT);
-            break;
+        if (pxc.settings.n_input_files > 1) {
+            ret = scroll_next_filename(&pxc.settings.output_file, pxc.settings.output_folder,
+                                       get_basename(pxc.settings.input_files[pxc.input_idx]));
+            if (ret < 0)
+                break;
         }
 
-        if (strcmp(current_file, pxc.settings.output_url) == 0) {
-            $px_log(PX_LOG_ERROR, "Input and output files cannot be the same\n");
-            ret = AVERROR(EINVAL);
+        // TODO: check if input is same as output
+
+        ret = px_media_ctx_init(&pxc.media_ctx, &pxc.settings, pxc.input_idx);
+        if (ret < 0)
             break;
-        }
 
         px_thrd_launch(&pxc.transc_thread);
 
         while (!pxc.transc_thread.done) {
             sleep_ms(10);
             $px_log(PX_LOG_PROGRESS, "Decoded %lu frames, dropped %lu frames, encoded %lu frames\r",
-                    pxc.frames_decoded, pxc.decoded_frames_dropped, pxc.frames_output);
+                    pxc.media_ctx.frames_decoded, pxc.media_ctx.decoded_frames_dropped,
+                    pxc.media_ctx.frames_output);
         }
 
         putchar('\n');
@@ -53,9 +79,9 @@ int px_main(PXSettings s) {
         int transc_ret = 0;
         px_thrd_join(&pxc.transc_thread, &transc_ret);
 
-        if (transc_ret) {
+        if (transc_ret < 0) {
             $px_log(PX_LOG_ERROR, "Error occurred while processing file \"%s\" (stream index %d)\n",
-                    current_file, pxc.stream_idx);
+                    pxc.settings.input_files[pxc.input_idx], pxc.media_ctx.stream_idx);
             ret = transc_ret;
             break;
         }
@@ -69,58 +95,29 @@ int px_main(PXSettings s) {
 int px_transcode(PXContext* pxc) {
 
     int ret = 0;
-    AVFrame* frame = NULL;
-    AVPacket* packet = NULL;
-
-    ret = px_transcode_init(pxc, &packet, &frame);
-    if (ret)
-        goto end;
 
     while (1) {
-        ret = av_read_frame(pxc->media_ctx.ifmt_ctx, packet);
-        if (ret == AVERROR_EOF) {
+        AVPacket pkt = {0};
+        ret = px_read_video_frame(&pxc->media_ctx, &pkt);
+        if (ret == AVERROR(EAGAIN)) {
+            continue;
+        } else if (ret == AVERROR_EOF) {
             ret = 0;
             break;
         } else if (ret < 0) {
-            $lav_throw_msg("av_read_frame", ret);
             goto end;
         }
 
-        pxc->stream_idx = packet->stream_index;
-
-        // write non-video frames away
-        {
-            enum AVMediaType stream_type =
-                pxc->media_ctx.ifmt_ctx->streams[pxc->stream_idx]->codecpar->codec_type;
-
-            if (stream_type != AVMEDIA_TYPE_VIDEO) {
-
-                AVRational in_tb = pxc->media_ctx.ifmt_ctx->streams[packet->stream_index]->time_base;
-                AVRational out_tb = pxc->media_ctx.ofmt_ctx->streams[packet->stream_index]->time_base;
-                av_packet_rescale_ts(packet, in_tb, out_tb);
-
-                ret = av_interleaved_write_frame(pxc->media_ctx.ofmt_ctx, packet);
-                if (ret < 0) {
-                    $lav_throw_msg("av_interleaved_write_frame", ret);
-                    goto end;
-                }
-                av_packet_unref(packet);
-                continue;
-            }
-        }
-
-        PXCodingContext* cctx = &pxc->media_ctx.coding_ctx_vec[pxc->stream_idx];
-
-        AVRational in_tb = pxc->media_ctx.ifmt_ctx->streams[packet->stream_index]->time_base;
-        AVRational enc_tb = cctx->enc_ctx->time_base;
-        av_packet_rescale_ts(packet, in_tb, enc_tb);
-
-        ret = avcodec_send_packet(cctx->dec_ctx, packet);
+        AVCodecContext* dec_ctx = pxc->media_ctx.coding_ctx_arr[pxc->media_ctx.stream_idx].dec_ctx;
+        ret = avcodec_send_packet(dec_ctx, &pkt);
         if (ret < 0)
             goto end;
 
+        av_packet_unref(&pkt);
+
         while (ret >= 0) {
-            ret = avcodec_receive_frame(cctx->dec_ctx, frame);
+            AVFrame frame = {0};
+            ret = avcodec_receive_frame(dec_ctx, &frame);
             if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
                 ret = 0;
                 break;
@@ -128,8 +125,8 @@ int px_transcode(PXContext* pxc) {
                 $lav_throw_msg("avcodec_receive_frame", ret);
                 goto end;
             }
-            frame->pts = frame->best_effort_timestamp;
-            pxc->frames_decoded++;
+            pxc->media_ctx.frames_decoded++;
+            frame.pts = frame.best_effort_timestamp;
 
             /* filtering
             {
@@ -156,18 +153,15 @@ int px_transcode(PXContext* pxc) {
             }
             */
 
-            ret = encode_frame(&pxc->media_ctx, frame, packet, pxc->stream_idx);
+            ret = px_encode_frame(&pxc->media_ctx, &frame);
             if (ret == AVERROR_EOF) {
                 ret = 0;
                 break;
             } else if (ret < 0) {
                 goto end;
             }
-            av_frame_unref(frame);
-            pxc->frames_output++;
+            av_frame_unref(&frame);
         }
-
-        av_packet_unref(packet);
     }
 
     for (unsigned i = 0; i < pxc->media_ctx.ifmt_ctx->nb_streams; i++) {
@@ -175,7 +169,15 @@ int px_transcode(PXContext* pxc) {
         if (stream_type != AVMEDIA_TYPE_VIDEO)
             continue;
 
-        ret = flush_encoder(&pxc->media_ctx, packet, i);
+        pxc->media_ctx.stream_idx = i;
+
+        ret = px_flush_decoder(&pxc->media_ctx);
+        if (ret < 0 && ret != AVERROR_EOF) {
+            $px_log(PX_LOG_ERROR, "Failed to flush decoder\n");
+            goto end;
+        }
+
+        ret = px_flush_encoder(&pxc->media_ctx);
         if (ret < 0 && ret != AVERROR_EOF) {
             $px_log(PX_LOG_ERROR, "Failed to flush encoder\n");
             goto end;
@@ -187,103 +189,8 @@ int px_transcode(PXContext* pxc) {
         $lav_throw_msg("av_write_trailer", ret);
 
 end:
-    px_transcode_free(&packet, &frame);
     pxc->transc_thread.done = true;
     return ret;
-}
-
-int px_transcode_init(PXContext* pxc, AVPacket** packet, AVFrame** frame) {
-
-    int ret = 0;
-
-    *packet = NULL;
-    *frame = NULL;
-
-    char* in_file = pxc->settings.input_files[pxc->input_idx];
-    char* out_url = pxc->settings.output_url;
-
-    if (pxc->settings.n_input_files > 1) {
-        char* in_file_basename = get_basename(in_file);
-        pxc->settings.output_url = out_url = realloc(out_url, strlen(out_url) + strlen(in_file_basename) + 1);
-        strcat(out_url, in_file_basename);
-    }
-
-    ret = init_input(&pxc->media_ctx, in_file);
-    if (ret) {
-        $px_log(PX_LOG_ERROR, "Failed to open input file \"%s\"\n", in_file);
-        return ret;
-    }
-
-    ret = init_output(&pxc->media_ctx, out_url, &pxc->settings);
-    if (ret) {
-        $px_log(PX_LOG_ERROR, "Failed to open output file \"%s\"\n", out_url);
-        return ret;
-    }
-
-    for (int i = 0; i < pxc->fltr_ctx.n_filters; i++) {
-        PXFilter* fltr = &pxc->fltr_ctx.filters[i];
-        ret = fltr->init(fltr, NULL); // TODO: pass settings
-        if (ret) {
-            $px_log(PX_LOG_ERROR, "Failed to initialize filter \"%s\"\n", fltr->name);
-            return ret;
-        }
-    }
-
-    *packet = av_packet_alloc();
-    if (!packet) {
-        oom(sizeof **packet);
-        return AVERROR(ENOMEM);
-    }
-
-    *frame = av_frame_alloc();
-    if (!frame) {
-        oom(sizeof **frame);
-        av_packet_free(packet);
-        return AVERROR(ENOMEM);
-    }
-
-    return ret;
-}
-
-int px_settings_init(int argc, char** argv, PXSettings* s) {
-
-    *s = (PXSettings) {0};
-
-    int ret = px_parse_args(argc, argv, s);
-    if (ret)
-        return ret == PX_HELP_PRINTED ? 0 : ret;
-
-    if (!s->n_input_files) {
-        $px_log(PX_LOG_ERROR, "No input file specified\n");
-        return 1;
-    }
-
-    if (!s->output_url) {
-        $px_log(PX_LOG_ERROR, "No output file specified\n");
-        return 1;
-    }
-
-    // /path/to/output_url/input_files[i]
-    if (s->n_input_files > 1) {
-
-        char last = s->output_url[strlen(s->output_url) - 1];
-        if (last != *PATH_SEP) {
-            // +1 for the path sep, +1 for the null terminator
-            s->output_url = realloc(s->output_url, strlen(s->output_url) + 1 + 1);
-            strcat(s->output_url, PATH_SEP);
-        }
-
-        if (!create_folder(s->output_url)) {
-            char err[256];
-            last_errstr(err, 0);
-            $px_log(PX_LOG_ERROR, "Failed to create output directory: %s (%d)\n", err, $last_errcode());
-            return 1;
-        }
-    }
-
-    px_log_set_level(s->loglevel);
-
-    return 0;
 }
 
 void px_ctx_free(PXContext* pxc) {
@@ -295,19 +202,4 @@ void px_ctx_free(PXContext* pxc) {
 
     px_media_ctx_free(&pxc->media_ctx);
     px_settings_free(&pxc->settings);
-}
-
-void px_settings_free(PXSettings* s) {
-
-    if (s->n_input_files > 1)
-        free_s(&s->output_url);
-
-    if (s->enc_opts_v)
-        av_dict_free(&s->enc_opts_v);
-}
-
-void px_transcode_free(AVPacket** packet, AVFrame** frame) {
-
-    av_packet_free(packet);
-    av_frame_free(frame);
 }

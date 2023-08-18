@@ -51,9 +51,6 @@ char* get_basename(const char* path);
 // sleep for `ms` milliseconds
 void sleep_ms(int ms);
 
-// assert with block on failure
-#define $assert_or(x) for (; !(x); assert(x))
-
 // print an error message about a failed allocation
 void oom(size_t alloc_size);
 
@@ -65,6 +62,9 @@ void free_s(void* ptr);
 
 // check if `path` exists
 bool file_exists(const char* path);
+
+// assert with block on failure
+#define $assert_or(x) for (bool _c = (x); !_c; assert(_c))
 
 /**
  * print the last error location, code and message to stderr
