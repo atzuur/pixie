@@ -1,6 +1,5 @@
 #include "coding.h"
 #include "util/utils.h"
-#include <libavutil/avutil.h>
 
 static int init_input(PXMediaContext* ctx, const char* in_file);
 static int init_output(PXMediaContext* ctx, PXSettings* s);
@@ -252,10 +251,6 @@ int px_read_video_frame(PXMediaContext* ctx, AVPacket* pkt) {
         goto early_ret;
     }
 
-    // AVRational in_tb = ctx->ifmt_ctx->streams[ctx->stream_idx]->time_base;
-    // AVRational enc_tb = ctx->coding_ctx_arr[ctx->stream_idx].enc_ctx->time_base;
-    // av_packet_rescale_ts(pkt, in_tb, enc_tb);
-
     return 0;
 
 early_ret:
@@ -287,12 +282,12 @@ int px_encode_frame(PXMediaContext* ctx, const AVFrame* frame) {
 
         pkt.stream_index = ctx->stream_idx;
 
-        const int fps = ctx->ifmt_ctx->streams[ctx->stream_idx]->avg_frame_rate.num /
-                        ctx->ifmt_ctx->streams[ctx->stream_idx]->avg_frame_rate.den;
-        pkt.duration = enc_ctx->time_base.den / enc_ctx->time_base.num / fps;
+        const AVStream* istream = ctx->ifmt_ctx->streams[ctx->stream_idx];
+        const AVStream* ostream = ctx->ofmt_ctx->streams[ctx->stream_idx];
+        pkt.duration = ostream->time_base.den / ostream->time_base.num / istream->avg_frame_rate.num *
+                       istream->avg_frame_rate.den;
 
-        av_packet_rescale_ts(&pkt, ctx->ifmt_ctx->streams[ctx->stream_idx]->time_base,
-                             ctx->ofmt_ctx->streams[ctx->stream_idx]->time_base);
+        av_packet_rescale_ts(&pkt, istream->time_base, ostream->time_base);
 
         ret = av_interleaved_write_frame(ctx->ofmt_ctx, &pkt);
         if (ret < 0) {
