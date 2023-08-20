@@ -128,30 +128,30 @@ int px_transcode(PXContext* pxc) {
             pxc->media_ctx.frames_decoded++;
             frame.pts = frame.best_effort_timestamp;
 
-            /* filtering
-            {
-                ret = av_frame_make_writable(frame);
+            ret = av_frame_make_writable(&frame);
+            if (ret < 0) {
+                $lav_throw_msg("av_frame_make_writable", ret);
+                goto end;
+            }
+
+            PXFrame px_frame = {0};
+            int ret = px_frame_from_av(&px_frame, &frame);
+            if (ret < 0)
+                goto end;
+
+            px_frame_assert_correctly_converted(&frame, &px_frame);
+
+            for (int i = 0; i < pxc->fltr_ctx.n_filters; i++) {
+                PXFilter* fltr = &pxc->fltr_ctx.filters[i];
+
+                fltr->frame = &px_frame;
+
+                ret = fltr->apply(fltr);
                 if (ret < 0) {
-                    $lav_throw_msg("av_frame_make_writable", ret);
+                    $px_log(PX_LOG_ERROR, "Failed to apply filter \"%s\"\n", fltr->name);
                     goto end;
                 }
-
-                PXFrame px_frame = px_frame_from_av(frame);
-                px_frame_assert_correctly_converted(frame, &px_frame);
-
-                for (int i = 0; i < pxc->fltr_ctx.n_filters; i++) {
-                    PXFilter* fltr = &pxc->fltr_ctx.filters[i];
-
-                    fltr->frame = &px_frame;
-
-                    ret = fltr->apply(fltr);
-                    if (ret < 0) {
-                        $px_log(PX_LOG_ERROR, "Failed to apply filter \"%s\"\n", fltr->name);
-                        goto end;
-                    }
-                }
             }
-            */
 
             ret = px_encode_frame(&pxc->media_ctx, &frame);
             if (ret == AVERROR_EOF) {

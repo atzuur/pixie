@@ -149,9 +149,9 @@ size_t px_frame_size(const PXFrame* frame) {
     return size;
 }
 
-PXFrame px_frame_from_av(const AVFrame* avframe) {
+int px_frame_from_av(PXFrame* dest, const AVFrame* avframe) {
 
-    PXFrame frame = {
+    *dest = (PXFrame) {
         .width = avframe->width,
         .height = avframe->height,
         .pix_fmt = avframe->format,
@@ -159,13 +159,22 @@ PXFrame px_frame_from_av(const AVFrame* avframe) {
         .timebase = avframe->time_base,
     };
 
-    for (int i = 0; i < frame.n_planes; i++) {
-        for (int line = 0; line < frame.planes[i].height; line++) {
-            frame.planes[i].data[line] = avframe->data[i] + avframe->linesize[i] * line;
+    px_frame_init(dest);
+
+    for (int i = 0; i < dest->n_planes; i++) {
+
+        dest->planes[i].data = malloc(sizeof(uint8_t*) * dest->planes[i].height);
+        if (!dest->planes[i].data) {
+            oom(sizeof(uint8_t*) * dest->planes[i].height);
+            return AVERROR(ENOMEM);
+        }
+
+        for (int line = 0; line < dest->planes[i].height; line++) {
+            dest->planes[i].data[line] = avframe->data[i] + avframe->linesize[i] * line;
         }
     }
 
-    return frame;
+    return 0;
 }
 
 void px_frame_assert_correctly_converted(const AVFrame* src, const PXFrame* dest) {

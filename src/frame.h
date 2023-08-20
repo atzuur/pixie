@@ -56,7 +56,7 @@ void px_frame_copy(PXFrame* dest, const PXFrame* src);
 size_t px_plane_size(const PXFrame* frame, int idx);
 size_t px_frame_size(const PXFrame* frame);
 
-PXFrame px_frame_from_av(const AVFrame* avframe);
+int px_frame_from_av(PXFrame* dest, const AVFrame* avframe);
 void px_frame_assert_correctly_converted(const AVFrame* src, const PXFrame* dest);
 
 int px_fb_init(PXFrameBuffer* fb, int width, int height, enum AVPixelFormat pix_fmt);
