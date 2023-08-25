@@ -116,6 +116,7 @@ static int filter_encode_frame(PXContext* pxc, AVFrame* frame) {
         PXFilter* fltr = &pxc->fltr_ctx.filters[i];
 
         fltr->frame = &px_frame;
+        fltr->frame_num = pxc->media_ctx.frames_decoded;
 
         ret = fltr->apply(fltr);
         if (ret < 0) {

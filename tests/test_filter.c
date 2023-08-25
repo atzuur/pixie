@@ -1,4 +1,5 @@
 #include "../src/pixie.h"
+#include <math.h>
 
 void test_filter_free(PXFilter* filter) {
     (void)filter;
@@ -16,7 +17,7 @@ int test_filter_apply(PXFilter* filter) {
 
         for (int y = 0; y < plane->height; y++) {
             for (int x = 0; x < plane->width; x++) {
-                plane->data[y][x] = ~plane->data[y][x];
+                plane->data[y][x] = plane->data[y][x] * (int)(sqrt(x * y) / p + filter->frame_num * 10);
             }
         }
     }

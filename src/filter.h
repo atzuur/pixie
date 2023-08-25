@@ -4,6 +4,7 @@
 typedef struct PXFilter {
 
     PXFrame* frame; // modified in-place
+    int frame_num;
 
     int (*init)(struct PXFilter* filter, AVDictionary* args);
     int (*apply)(struct PXFilter* filter);
