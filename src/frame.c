@@ -8,21 +8,20 @@
 
 int px_frame_alloc_bufs(PXFrame* frame) {
 
-    for (int i = 0; i < frame->n_planes; i++) {
+    size_t frame_sz = px_frame_size(frame);
+    uint8_t* data = calloc(frame_sz, 1);
+    if (!data) {
+        oom(frame_sz);
+        goto fail;
+    }
 
+    for (int i = 0; i < frame->n_planes; i++) {
         int plane_width = frame->planes[i].width;
         int plane_height = frame->planes[i].height;
 
-        size_t plane_sz = plane_width * plane_height * frame->bytes_per_comp;
-        uint8_t* data = calloc(1, plane_sz);
-        if (!data) {
-            oom(plane_sz);
-            goto fail;
-        }
-
-        frame->planes[i].data = malloc(sizeof(uint8_t*) * plane_height);
+        frame->planes[i].data = calloc(plane_height, sizeof(uint8_t*));
         if (!frame->planes[i].data) {
-            oom(sizeof(uint8_t*) * plane_height);
+            oom(plane_height * sizeof(uint8_t*));
             goto fail;
         }
 
@@ -83,9 +82,11 @@ PXFrame* px_frame_new(int width, int height, enum AVPixelFormat pix_fmt) {
         return NULL;
     }
 
-    frame->width = width;
-    frame->height = height;
-    frame->pix_fmt = pix_fmt;
+    *frame = (PXFrame) {
+        .width = width,
+        .height = height,
+        .pix_fmt = pix_fmt,
+    };
 
     if (px_frame_init(frame) < 0) {
         goto fail;
@@ -162,10 +163,9 @@ int px_frame_from_av(PXFrame* dest, const AVFrame* avframe) {
     px_frame_init(dest);
 
     for (int i = 0; i < dest->n_planes; i++) {
-
-        dest->planes[i].data = malloc(sizeof(uint8_t*) * dest->planes[i].height);
+        dest->planes[i].data = calloc(dest->planes[i].height, sizeof(uint8_t*));
         if (!dest->planes[i].data) {
-            oom(sizeof(uint8_t*) * dest->planes[i].height);
+            oom(dest->planes[i].height * sizeof(uint8_t*));
             return AVERROR(ENOMEM);
         }
 
@@ -192,7 +192,10 @@ void px_frame_assert_correctly_converted(const AVFrame* src, const PXFrame* dest
             uint8_t* dest_line = dest->planes[i].data[line];
             uint8_t* src_line = src->data[i] + av_stride * line;
 
-            assert(memcmp(dest_line, src_line, actual_stride) == 0);
+            int ret = memcmp(dest_line, src_line, actual_stride);
+            assert(ret == 0);
+
+            (void)ret; // silence unused warning for release builds
         }
     }
 }

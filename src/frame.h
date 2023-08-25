@@ -9,11 +9,11 @@
 
 typedef struct PXVideoPlane {
 
-    // `height` pointers to each line
-    uint8_t** data;
-
     int width;
     int height;
+
+    // `height` pointers to each line
+    uint8_t** data;
 
 } PXVideoPlane;
 
@@ -33,7 +33,7 @@ typedef struct PXFrame {
 
     // bytes per pixel component, e.g. 1 for 8-bit, 2 for 16-bit,
     // padding is included (10-bit will be 2)
-    int bytes_per_comp;
+    size_t bytes_per_comp;
 
     int64_t pts;
     AVRational timebase;

@@ -39,6 +39,3 @@ void px_media_ctx_free(PXMediaContext* ctx);
 
 int px_read_video_frame(PXMediaContext* ctx, AVPacket* pkt);
 int px_encode_frame(PXMediaContext* ctx, const AVFrame* frame);
-
-int px_flush_encoder(PXMediaContext* ctx);
-int px_flush_decoder(PXMediaContext* ctx);

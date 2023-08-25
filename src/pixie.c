@@ -92,6 +92,86 @@ int px_main(PXSettings s) {
     return ret;
 }
 
+static int filter_encode_frame(PXContext* pxc, AVFrame* frame) {
+
+    int ret = 0;
+
+    if (!frame) // flush
+        goto skip_filters;
+
+    ret = av_frame_make_writable(frame);
+    if (ret < 0) {
+        $lav_throw_msg("av_frame_make_writable", ret);
+        return ret;
+    }
+
+    PXFrame px_frame = {0};
+    ret = px_frame_from_av(&px_frame, frame);
+    if (ret < 0)
+        return ret;
+
+    px_frame_assert_correctly_converted(frame, &px_frame);
+
+    for (int i = 0; i < pxc->fltr_ctx.n_filters; i++) {
+        PXFilter* fltr = &pxc->fltr_ctx.filters[i];
+
+        fltr->frame = &px_frame;
+
+        ret = fltr->apply(fltr);
+        if (ret < 0) {
+            $px_log(PX_LOG_ERROR, "Failed to apply filter \"%s\"\n", fltr->name);
+            return ret;
+        }
+    }
+
+skip_filters:
+    ret = px_encode_frame(&pxc->media_ctx, frame);
+    if (ret == AVERROR_EOF) {
+        return 0;
+    } else if (ret < 0) {
+        return ret;
+    }
+
+    return 0;
+}
+
+static int transcode_packet(PXContext* pxc, AVPacket* pkt) {
+
+    int ret = 0;
+
+    AVCodecContext* dec_ctx = pxc->media_ctx.coding_ctx_arr[pxc->media_ctx.stream_idx].dec_ctx;
+    ret = avcodec_send_packet(dec_ctx, pkt);
+    if (ret < 0) {
+        $lav_throw_msg("avcodec_send_packet", ret);
+        return ret;
+    }
+
+    if (pkt)
+        av_packet_unref(pkt);
+
+    while (ret >= 0) {
+        AVFrame frame = {0};
+        ret = avcodec_receive_frame(dec_ctx, &frame);
+        if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
+            ret = 0;
+            break;
+        } else if (ret < 0) {
+            $lav_throw_msg("avcodec_receive_frame", ret);
+            return ret;
+        }
+        pxc->media_ctx.frames_decoded++;
+        frame.pts = frame.best_effort_timestamp;
+
+        ret = filter_encode_frame(pxc, &frame);
+        if (ret < 0)
+            return ret;
+
+        av_frame_unref(&frame);
+    }
+
+    return 0;
+}
+
 int px_transcode(PXContext* pxc) {
 
     int ret = 0;
@@ -108,62 +188,12 @@ int px_transcode(PXContext* pxc) {
             goto end;
         }
 
-        AVCodecContext* dec_ctx = pxc->media_ctx.coding_ctx_arr[pxc->media_ctx.stream_idx].dec_ctx;
-        ret = avcodec_send_packet(dec_ctx, &pkt);
+        ret = transcode_packet(pxc, &pkt);
         if (ret < 0)
             goto end;
-
-        av_packet_unref(&pkt);
-
-        while (ret >= 0) {
-            AVFrame frame = {0};
-            ret = avcodec_receive_frame(dec_ctx, &frame);
-            if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
-                ret = 0;
-                break;
-            } else if (ret < 0) {
-                $lav_throw_msg("avcodec_receive_frame", ret);
-                goto end;
-            }
-            pxc->media_ctx.frames_decoded++;
-            frame.pts = frame.best_effort_timestamp;
-
-            ret = av_frame_make_writable(&frame);
-            if (ret < 0) {
-                $lav_throw_msg("av_frame_make_writable", ret);
-                goto end;
-            }
-
-            PXFrame px_frame = {0};
-            int ret = px_frame_from_av(&px_frame, &frame);
-            if (ret < 0)
-                goto end;
-
-            px_frame_assert_correctly_converted(&frame, &px_frame);
-
-            for (int i = 0; i < pxc->fltr_ctx.n_filters; i++) {
-                PXFilter* fltr = &pxc->fltr_ctx.filters[i];
-
-                fltr->frame = &px_frame;
-
-                ret = fltr->apply(fltr);
-                if (ret < 0) {
-                    $px_log(PX_LOG_ERROR, "Failed to apply filter \"%s\"\n", fltr->name);
-                    goto end;
-                }
-            }
-
-            ret = px_encode_frame(&pxc->media_ctx, &frame);
-            if (ret == AVERROR_EOF) {
-                ret = 0;
-                break;
-            } else if (ret < 0) {
-                goto end;
-            }
-            av_frame_unref(&frame);
-        }
     }
 
+    // flush
     for (unsigned i = 0; i < pxc->media_ctx.ifmt_ctx->nb_streams; i++) {
         enum AVMediaType stream_type = pxc->media_ctx.ifmt_ctx->streams[i]->codecpar->codec_type;
         if (stream_type != AVMEDIA_TYPE_VIDEO)
@@ -171,16 +201,16 @@ int px_transcode(PXContext* pxc) {
 
         pxc->media_ctx.stream_idx = i;
 
-        ret = px_flush_decoder(&pxc->media_ctx);
-        if (ret < 0 && ret != AVERROR_EOF) {
-            $px_log(PX_LOG_ERROR, "Failed to flush decoder\n");
-            goto end;
+        if (pxc->media_ctx.coding_ctx_arr[i].dec_ctx->codec->capabilities & AV_CODEC_CAP_DELAY) {
+            ret = transcode_packet(pxc, NULL);
+            if (ret < 0)
+                goto end;
         }
 
-        ret = px_flush_encoder(&pxc->media_ctx);
-        if (ret < 0 && ret != AVERROR_EOF) {
-            $px_log(PX_LOG_ERROR, "Failed to flush encoder\n");
-            goto end;
+        if (pxc->media_ctx.coding_ctx_arr[i].enc_ctx->codec->capabilities & AV_CODEC_CAP_DELAY) {
+            ret = filter_encode_frame(pxc, NULL);
+            if (ret < 0)
+                goto end;
         }
     }
 
