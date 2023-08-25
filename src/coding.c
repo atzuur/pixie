@@ -162,8 +162,9 @@ static int init_output(PXMediaContext* ctx, PXSettings* s) {
         const AVCodec* encoder = avcodec_find_encoder_by_name(s->enc_name_v);
         if (!encoder) {
             const char* default_enc = "libx264";
-            $px_log(PX_LOG_WARN, "Failed to find encoder \"%s\", using default encoder %s\n", s->enc_name_v,
-                    default_enc);
+            if (s->enc_name_v != NULL)
+                $px_log(PX_LOG_WARN, "Failed to find encoder \"%s\", using default encoder %s\n",
+                        s->enc_name_v, default_enc);
             encoder = avcodec_find_encoder_by_name(default_enc);
         }
 

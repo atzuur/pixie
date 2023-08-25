@@ -124,6 +124,9 @@ int px_parse_args(int argc, char** argv, PXSettings* s) {
 
             settings++; // skip comma
 
+            ptrdiff_t comma_offset = settings - s->enc_name_v - 1;
+            s->enc_name_v[comma_offset] = '\0';
+
             int ret = av_dict_parse_string(&s->enc_opts_v, settings, "=", ":", 0);
             if (ret < 0) {
                 $px_log(PX_LOG_ERROR, "Failed to parse video encoder settings \"%s\": %s (%d)\n", settings,
