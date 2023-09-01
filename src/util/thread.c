@@ -1,4 +1,5 @@
 #include "sync.h"
+#include "utils.h"
 
 void px_thrd_launch(PXThread* thread) {
     assert(thread->func);

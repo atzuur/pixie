@@ -17,7 +17,7 @@ int test_filter_apply(PXFilter* filter) {
 
         for (int y = 0; y < plane->height; y++) {
             for (int x = 0; x < plane->width; x++) {
-                plane->data[y][x] = plane->data[y][x] * (int)(sqrt(x * y) / p + filter->frame_num * 10);
+                plane->data[y][x] *= (*(double*)(plane->data[y] + x) * M_PI / atan2(x, y * p));
             }
         }
     }

@@ -6,8 +6,6 @@
 
 #pragma once
 
-#include "utils.h"
-
 #include <stdbool.h>
 #include <stdint.h> // intptr_t
 #include <string.h> // memset
