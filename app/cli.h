@@ -1,6 +1,6 @@
 #pragma once
 
-#include "pixie.h"
+#include <pixie/pixie.h>
 
 #define PX_HELP_PRINTED 2
 

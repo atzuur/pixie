@@ -1,6 +1,8 @@
 #include "cli.h"
-#include "log.h"
-#include "util/strconv.h"
+
+#include <pixie/log.h>
+#include <pixie/util/strconv.h>
+
 #include <ctype.h>
 
 void px_print_info(const char* prog_name, bool full) {

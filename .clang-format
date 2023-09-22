@@ -19,7 +19,7 @@ NamespaceIndentation: All
 IndentCaseLabels: 'true'
 PointerAlignment: Left
 ReflowComments: 'true'
-SortIncludes: 'true'
+SortIncludes: 'false'
 SortUsingDeclarations: 'true'
 SpaceAfterCStyleCast: 'false'
 SpaceAfterTemplateKeyword: 'false'

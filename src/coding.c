@@ -1,5 +1,6 @@
-#include "coding.h"
 #include "util/utils.h"
+
+#include <pixie/coding.h>
 
 static int init_input(PXMediaContext* ctx, const char* in_file);
 static int init_output(PXMediaContext* ctx, PXSettings* s);

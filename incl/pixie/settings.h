@@ -1,6 +1,7 @@
 #pragma once
 
 #include "log.h"
+
 #include <libavutil/dict.h>
 
 typedef struct PXSettings {

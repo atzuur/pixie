@@ -1,5 +1,6 @@
-#include "sync.h"
 #include "utils.h"
+
+#include <pixie/util/sync.h>
 
 void px_mtx_create(PXMutex* mutex) {
 #ifdef C11_THREADS

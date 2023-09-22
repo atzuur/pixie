@@ -1,6 +1,7 @@
-#include "pixie.h"
-#include "../tests/test_filter.c"
+#include "../tests/test_filter.c" // TODO: remove this
 #include "util/utils.h"
+
+#include <pixie/pixie.h>
 
 // make `*path` point to a string containing `folder_name` + PATH_SEP + `filename`
 static int scroll_next_filename(char** path, const char* folder_name, const char* filename) {

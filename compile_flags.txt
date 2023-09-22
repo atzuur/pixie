@@ -1,0 +1,7 @@
+-Wall
+-Wextra
+-Wpedantic
+-Wno-dollar-in-identifier-extension
+-Wno-for-loop-analysis
+-Wno-gnu-zero-variadic-macro-arguments
+-Iincl

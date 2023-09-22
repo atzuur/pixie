@@ -1,10 +1,10 @@
 #pragma once
 
+#include <libavutil/log.h>
+
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
-
-#include <libavutil/log.h>
 
 typedef enum PxLogLevel {
     PX_LOG_NONE = -1,

@@ -14,6 +14,7 @@
 #define C11_THREADS
 #include <stdio.h>
 #include <threads.h>
+#include <errno.h>
 
 static inline const char* c11_thrd_strerror(int err) {
     switch (err) {

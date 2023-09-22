@@ -1,5 +1,7 @@
-#include "settings.h"
 #include "util/utils.h"
+
+#include <pixie/settings.h>
+
 #include <libavutil/error.h>
 
 #include <stdlib.h>

@@ -1,4 +1,4 @@
-#include "log.h"
+#include <pixie/log.h>
 
 PXLogLevel px_global_loglevel = PX_LOG_WARN; // default
 

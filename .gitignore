@@ -64,3 +64,4 @@ dkms.conf
 *.ppm
 
 .vscode
+build/
