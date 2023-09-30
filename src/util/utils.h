@@ -2,6 +2,7 @@
 
 #include <assert.h>
 #include <stdbool.h>
+#include <stdio.h>
 
 #if defined(__unix__) || (defined(__APPLE__) && defined(__MACH__))
 
@@ -17,7 +18,7 @@
 #include <windows.h>
 
 #define PATH_SEP "\\"
-#define $last_errcode() GetLastError()
+#define $last_errcode() (int)GetLastError()
 
 #define access _access
 #define F_OK 0
@@ -72,5 +73,5 @@ bool file_exists(const char* path);
  * @param err (int) error code, if 0, the last error code is used
  */
 #define $throw_msg(func, err)                                                          \
-    fprintf(stderr, "%s() failed at %s:%d : %s (code %d)\n", __FILE__, __LINE__, func, \
-            last_errstr(&(char[256]), err), err)
+    fprintf(stderr, "%s() failed at %s:%d : %s (code %d)\n", func, __FILE__, __LINE__, \
+            last_errstr((char[256]) {0}, err), err)

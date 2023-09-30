@@ -63,5 +63,7 @@ dkms.conf
 *.webm
 *.ppm
 
+# project files
 .vscode
 build/
+compile_flags.txt

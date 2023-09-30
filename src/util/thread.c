@@ -24,7 +24,8 @@ void px_thrd_launch(PXThread* thread) {
 #endif
 #ifdef POSIX_THREADS
 
-    int res = pthread_create(&thread->thrd, 0, thread->func, thread->args);
+    typedef void* (*pthread_func)(void*);
+    int res = pthread_create(&thread->thrd, 0, (pthread_func)thread->func, thread->args);
     $assert_or(res == 0) {
         $throw_msg("pthread_create", res);
     }
@@ -78,7 +79,7 @@ void px_thrd_join(PXThread* thread, int* return_code) {
 
     memset(&thread->thrd, 0, sizeof(pthread_t));
 
-    *return_code = (int)(intptr_t)ret;
+    *return_code = (int)(intptr_t)ret; // negative return value? never heard of her :3
 
 #endif
 }

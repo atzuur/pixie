@@ -10,7 +10,15 @@
 #include <stdint.h> // intptr_t
 #include <string.h> // memset
 
-#if __STDC_VERSION__ >= 201112L && !defined(__STDC_NO_THREADS__)
+#ifdef _WIN32
+#define WIN32_THREADS
+#include <windows.h>
+
+#elif defined(__unix__) || (defined(__APPLE__) && defined(__MACH__))
+#define POSIX_THREADS
+#include <pthread.h>
+
+#elif __STDC_VERSION__ >= 201112L && !defined(__STDC_NO_THREADS__)
 #define C11_THREADS
 #include <stdio.h>
 #include <threads.h>
@@ -36,15 +44,7 @@ static inline const char* c11_thrd_strerror(int err) {
     fprintf(stderr, "%s() failed at %s:%d : %s (code %d)\n", func, __FILE__, __LINE__, \
             c11_thrd_strerror(err), err)
 
-#elif defined(_WIN32) && !defined(C11_THREADS)
-#define WIN32_THREADS
-#include <windows.h>
-
-#elif defined(__unix__) && !defined(C11_THREADS)
-#define POSIX_THREADS
-#include <pthread.h>
-
-#elif !defined(C11_THREADS) && !defined(_WIN32) && !defined(__unix__)
+#else
 #error No thread implementation available!
 #endif
 
@@ -58,11 +58,9 @@ typedef struct PXThread {
 
 #ifdef C11_THREADS
     thrd_t thrd;
-#endif
-#ifdef WIN32_THREADS
+#elif defined(WIN32_THREADS)
     HANDLE thrd;
-#endif
-#ifdef POSIX_THREADS
+#elif defined(POSIX_THREADS)
     pthread_t thrd;
 #endif
 
@@ -71,11 +69,9 @@ typedef struct PXThread {
 typedef struct PXMutex {
 #ifdef C11_THREADS
     mtx_t mtx;
-#endif
-#ifdef WIN32_THREADS
+#elif defined(WIN32_THREADS)
     HANDLE mtx;
-#endif
-#ifdef POSIX_THREADS
+#elif defined(POSIX_THREADS)
     pthread_mutex_t mtx;
 #endif
 } PXMutex;

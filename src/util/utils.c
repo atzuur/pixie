@@ -45,7 +45,7 @@ int get_available_threads(void) {
 
 char* last_errstr(char* dest, int err) {
     int errcode = err ? err : errno;
-    strerror_r(errcode, dest, 256);
+    strncpy(dest, strerror(errcode), 256);
     return dest;
 }
 
@@ -74,7 +74,7 @@ int get_available_threads(void) {
 }
 
 char* last_errstr(char* dest, int err) {
-    int errcode = err ? err : GetLastError();
+    int errcode = err ? err : (int)GetLastError();
     FormatMessage(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, NULL, errcode,
                   MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), dest, 256, NULL);
     return dest;
