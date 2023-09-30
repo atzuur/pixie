@@ -21,3 +21,5 @@ copy ffmpeg\bin\avcodec*.dll .
 copy ffmpeg\bin\avformat*.dll .
 copy ffmpeg\bin\avutil*.dll .
 copy ffmpeg\bin\swresample*.dll .
+
+cd ..
