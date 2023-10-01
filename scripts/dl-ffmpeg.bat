@@ -1,13 +1,16 @@
 @echo off
 
-if not exist "build" mkdir build
-if exist "build\ffmpeg" rmdir /s /q "build\ffmpeg"
-
+rmdir /s /q build 2> nul
+mkdir build
 cd build
 
-echo getting latest ffmpeg version 1>&2
-for /f "tokens=*" %%v in ('curl -L https://www.gyan.dev/ffmpeg/builds/release-version') do (
-    set ff_ver=%%v
+if "%1" == "" (
+    echo getting latest ffmpeg version 1>&2
+    for /f "tokens=*" %%v in ('curl -L https://www.gyan.dev/ffmpeg/builds/release-version') do (
+        set ff_ver=%%v
+    )
+) else (
+    set ff_ver=%1
 )
 
 echo downloading ffmpeg %ff_ver% 1>&2
