@@ -1,4 +1,4 @@
-#include "../src/frame.h"
+#include <pixie/frame.h>
 #include <libavutil/pixfmt.h>
 #include <stdio.h>
 #include <stdlib.h>

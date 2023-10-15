@@ -1,7 +1,10 @@
 @echo off
 
-rmdir /s /q build 2> nul
-mkdir build
+if exist build (
+    rmdir /s /q build/ffmpeg 2> nul
+) else (
+    mkdir build
+)
 cd build
 
 if "%1" == "" (
