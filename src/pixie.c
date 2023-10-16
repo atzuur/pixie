@@ -66,7 +66,9 @@ int px_main(PXSettings s) {
         if (ret < 0)
             break;
 
-        px_thrd_launch(&pxc.transc_thread);
+        ret = px_thrd_launch(&pxc.transc_thread);
+        if (ret < 0)
+            break;
 
         while (!pxc.transc_thread.done) {
             sleep_ms(10);
@@ -78,7 +80,9 @@ int px_main(PXSettings s) {
         putchar('\n');
 
         int transc_ret = 0;
-        px_thrd_join(&pxc.transc_thread, &transc_ret);
+        ret = px_thrd_join(&pxc.transc_thread, &transc_ret);
+        if (ret < 0)
+            break;
 
         if (transc_ret < 0) {
             $px_log(PX_LOG_ERROR, "Error occurred while processing file \"%s\" (stream index %d)\n",

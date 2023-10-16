@@ -18,6 +18,13 @@ int px_settings_check(PXSettings* s) {
         return AVERROR(EINVAL);
     }
 
+    for (int i = 0; i < s->n_input_files; i++) {
+        if (!file_exists(s->input_files[i])) {
+            $px_log(PX_LOG_ERROR, "File \"%s\" does not exist\n", s->input_files[i]);
+            return AVERROR(ENOENT);
+        }
+    }
+
     if (s->n_input_files > 1) {
 
         if (!s->output_folder) {
@@ -30,13 +37,6 @@ int px_settings_check(PXSettings* s) {
             last_errstr(err, 0);
             $px_log(PX_LOG_ERROR, "Failed to create output directory: %s (%d)\n", err, $last_errcode());
             return $last_errcode();
-        }
-
-        for (int i = 0; i < s->n_input_files; i++) {
-            if (!file_exists(s->input_files[i])) {
-                $px_log(PX_LOG_ERROR, "File \"%s\" does not exist\n", s->input_files[i]);
-                return AVERROR(ENOENT);
-            }
         }
     }
 

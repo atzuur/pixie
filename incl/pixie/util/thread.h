@@ -1,8 +1,5 @@
 // s/o luminance
 // https://github.com/unknownopponent/C_Simple_Thread
-//
-// all of these throw because propagating would've been a pain
-// they should all be fatal anyways
 
 #pragma once
 
@@ -66,36 +63,11 @@ typedef struct PXThread {
 
 } PXThread;
 
-typedef struct PXMutex {
-#ifdef C11_THREADS
-    mtx_t mtx;
-#elif defined(WIN32_THREADS)
-    HANDLE mtx;
-#elif defined(POSIX_THREADS)
-    pthread_mutex_t mtx;
-#endif
-} PXMutex;
-
 // launch thread with function `thread->func` and arguments `thread->args`
-void px_thrd_launch(PXThread* thread);
+int px_thrd_launch(PXThread* thread);
 
 // wait for `thread` to terminate, thread return value is stored in `*return_code`
-void px_thrd_join(PXThread* thread, int* return_code);
+int px_thrd_join(PXThread* thread, int* return_code);
 
 // terminate calling thread with code `ret`
 void px_thrd_exit(int ret);
-
-// initialize mutex
-void px_mtx_create(PXMutex* mutex);
-
-// deinitialize mutex
-void px_mtx_destroy(PXMutex* mutex);
-
-// lock mutex, block until available
-void px_mtx_lock(PXMutex* mutex);
-
-// try to lock mutex, always return immediately
-void px_mtx_try_lock(PXMutex* mutex);
-
-// release mutex
-void px_mtx_unlock(PXMutex* mutex);

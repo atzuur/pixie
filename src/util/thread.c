@@ -1,87 +1,79 @@
 #include "utils.h"
 
-#include <pixie/util/sync.h>
+#include <pixie/util/thread.h>
 
-void px_thrd_launch(PXThread* thread) {
+int px_thrd_launch(PXThread* thread) {
     assert(thread->func);
 
 #ifdef C11_THREADS
-
     int res = thrd_create(&thread->thrd, thread->func, thread->args);
-    $assert_or(res == thrd_success) {
+    if (res != thrd_success)
         $c11_thrd_throw_msg("thrd_create", res);
-    }
-
+    return res;
 #endif
 #ifdef WIN32_THREADS
-
     thread->thrd = CreateThread(0, 0, (LPTHREAD_START_ROUTINE)thread->func, thread->args, 0, 0);
-
-    $assert_or(thread->thrd) {
+    if (!thread->thrd) {
         $throw_msg("CreateThread", $last_errcode());
+        return 1;
     }
-
+    return 0;
 #endif
 #ifdef POSIX_THREADS
-
     typedef void* (*pthread_func)(void*);
     int res = pthread_create(&thread->thrd, 0, (pthread_func)thread->func, thread->args);
-    $assert_or(res == 0) {
+    if (res != 0)
         $throw_msg("pthread_create", res);
-    }
-
+    return res;
 #endif
 }
 
-void px_thrd_join(PXThread* thread, int* return_code) {
+int px_thrd_join(PXThread* thread, int* return_code) {
     assert(thread->thrd);
 
 #ifdef C11_THREADS
-
     int res = thrd_join(thread->thrd, return_code);
-    $assert_or(res == thrd_success) {
+    if (res != thrd_success) {
         $c11_thrd_throw_msg("thrd_join", res);
+        goto end;
     }
-
-    memset(&thread->thrd, 0, sizeof(thrd_t));
-
 #endif
 #ifdef WIN32_THREADS
-
     DWORD res = WaitForSingleObject(thread->thrd, INFINITE);
-    $assert_or(res == WAIT_OBJECT_0) {
+    if (res != WAIT_OBJECT_0) {
         $throw_msg("WaitForSingleObject", $last_errcode());
+        goto end;
     }
 
     DWORD ret;
-    BOOL res2 = GetExitCodeThread(thread->thrd, &ret);
-    $assert_or(res2) {
+    res = (DWORD)GetExitCodeThread(thread->thrd, &ret);
+    if (!res) {
         $throw_msg("GetExitCodeThread", $last_errcode());
+        goto end;
     }
 
-    res2 = CloseHandle(thread->thrd);
-    $assert_or(res2) {
+    res = (DWORD)CloseHandle(thread->thrd);
+    if (!res) {
         $throw_msg("CloseHandle", $last_errcode());
+        goto end;
     }
-
-    memset(&thread->thrd, 0, sizeof(HANDLE));
 
     *return_code = (int)ret;
-
 #endif
 #ifdef POSIX_THREADS
-
     void* ret;
     int res = pthread_join(thread->thrd, &ret);
-    $assert_or(res == 0) {
+    if (res != 0) {
         $throw_msg("pthread_join", res);
+        goto end;
     }
 
-    memset(&thread->thrd, 0, sizeof(pthread_t));
-
-    *return_code = (int)(intptr_t)ret; // negative return value? never heard of her :3
-
+    *return_code = (int)(intptr_t)ret;
 #endif
+
+end:
+    memset(&thread->thrd, 0, sizeof thread->thrd);
+    return res;
 }
 
 void px_thrd_exit(int ret) {

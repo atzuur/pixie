@@ -4,7 +4,7 @@
 #include "filter.h"
 #include "log.h"
 #include "settings.h"
-#include "util/sync.h"
+#include "util/thread.h"
 
 #include <stdbool.h>
 #include <stdint.h>
