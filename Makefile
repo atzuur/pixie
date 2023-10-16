@@ -38,10 +38,9 @@ ifeq ($(ff_libs),)
 endif
 
 base_cflags := -std=c2x $(warns)
-cflags := $(strip $(includes) $(base_cflags) $(extra_cflags) \
+cflags := $(strip $(includes) $(base_cflags) $(extra_cflags) -fPIC \
 	$(if $(debug), -ggdb3 -DDEBUG, -O3 -ffast-math -funroll-loops -DNDEBUG) \
 	$(if $(windows), -D__USE_MINGW_ANSI_STDIO) \
-	$(if $(shared), -fPIC) \
 	$(sanitize:%=-fsanitize=%))
 
 ldflags := $(strip -s -lm $(ff_libs) $(if $(use_clang), -fuse-ld=lld) \
