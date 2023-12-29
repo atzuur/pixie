@@ -1,5 +1,6 @@
 #include "cli.h"
 
+#include <limits.h>
 #include <pixie/log.h>
 #include <pixie/util/strconv.h>
 
@@ -34,7 +35,7 @@ static inline bool opt_matches(const char* opt, const char* long_opt, const char
 
 static inline bool is_opt(const char* str) {
 
-    int len = strlen(str);
+    size_t len = strlen(str);
     if (len < 2) // has to be at least "-x"
         return false;
 
@@ -44,7 +45,7 @@ static inline bool is_opt(const char* str) {
     if (is_digit(str[1])) // negative number
         return false;
 
-    for (int i = 0; i < len; i++) {
+    for (size_t i = 0; i < len; i++) {
         if (isspace(*str))
             return false;
     }
@@ -147,11 +148,11 @@ int px_parse_args(int argc, char** argv, PXSettings* s) {
 
             AtoiResult res = checked_atoi(value);
             if (!res.fail)
-                s->loglevel = res.value;
+                s->loglevel = res.value % INT_MAX;
             else
                 s->loglevel = px_loglevel_from_str(value);
 
-            if (s->loglevel < 0 || s->loglevel >= PX_LOG_COUNT) {
+            if (s->loglevel <= PX_LOG_NONE || s->loglevel >= PX_LOG_COUNT) {
                 $px_log(PX_LOG_ERROR, "Invalid log level: \"%s\"\n", value);
                 return 1;
             }

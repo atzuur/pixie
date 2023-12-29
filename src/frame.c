@@ -1,72 +1,44 @@
 #include "util/utils.h"
 
 #include <pixie/frame.h>
-#include <pixie/log.h>
+#include <pixie/coding.h>
 
-#include <libavutil/avutil.h>
 #include <libavutil/pixdesc.h>
+#include <libswscale/swscale.h>
 
 #include <stdlib.h>
 
 int px_frame_alloc_bufs(PXFrame* frame) {
-
     size_t frame_sz = px_frame_size(frame);
-    uint8_t* data = calloc(frame_sz, 1);
+    uint8_t* data = aligned_alloc(32, frame_sz); // todo: platform dependent alignment
     if (!data) {
         oom(frame_sz);
-        goto fail;
+        px_frame_free(&frame);
+        return AVERROR(ENOMEM);
     }
 
-    for (int i = 0; i < frame->n_planes; i++) {
-        int plane_width = frame->planes[i].width;
-        int plane_height = frame->planes[i].height;
-
-        frame->planes[i].data = calloc(plane_height, sizeof(uint8_t*));
-        if (!frame->planes[i].data) {
-            oom(plane_height * sizeof(uint8_t*));
-            goto fail;
-        }
-
-        for (int line = 0; line < plane_height; line++) {
-            size_t stride = plane_width * frame->bytes_per_comp;
-            frame->planes[i].data[line] = data + stride * line;
-        }
+    frame->planes[0].data = data;
+    for (int i = 1; i < frame->n_planes; i++) {
+        frame->planes[i].data = frame->planes[i - 1].data + px_plane_size(frame, i - 1);
     }
 
     return 0;
-
-fail:
-    px_frame_free(&frame);
-    return AVERROR(ENOMEM);
 }
 
 int px_frame_init(PXFrame* frame) {
-
     if (frame->width <= 0 || frame->height <= 0) {
         $px_log(PX_LOG_ERROR, "Invalid frame dimensions: %dx%d\n", frame->width, frame->height);
         return AVERROR(EINVAL);
     }
 
-    const AVPixFmtDescriptor* fmt_desc = av_pix_fmt_desc_get(frame->pix_fmt);
-    if (!fmt_desc) {
-        $px_log(PX_LOG_ERROR, "Unknown pixel format: %d\n", frame->pix_fmt);
-        return AVERROR(EINVAL);
-    }
+    PXPixFmtDescriptor fmt_desc;
+    px_pix_fmt_get_desc(&fmt_desc, frame->pix_fmt);
 
-    // any pixel format that is not planar is unsupported
-    if (!(fmt_desc->flags & AV_PIX_FMT_FLAG_PLANAR)) {
-        $px_log(PX_LOG_ERROR, "Unsupported pixel format: %s\n", av_get_pix_fmt_name(frame->pix_fmt));
-        return AVERROR(EINVAL);
-    }
+    frame->n_planes = fmt_desc.n_planes;
+    frame->bytes_per_comp = fmt_desc.bytes_per_comp;
 
-    frame->n_planes = av_pix_fmt_count_planes(frame->pix_fmt);
-
-    // all components have the same number of bits in planar formats
-    frame->bits_per_comp = fmt_desc->comp[0].depth;
-    frame->bytes_per_comp = ceil_div(frame->bits_per_comp, CHAR_BIT);
-
-    int chroma_width = AV_CEIL_RSHIFT(frame->width, fmt_desc->log2_chroma_w);
-    int chroma_height = AV_CEIL_RSHIFT(frame->height, fmt_desc->log2_chroma_h);
+    int chroma_width = frame->width >> fmt_desc.log2_chroma[0];
+    int chroma_height = frame->height >> fmt_desc.log2_chroma[1];
 
     for (int i = 0; i < frame->n_planes; i++) {
         frame->planes[i].width = i == 0 ? frame->width : chroma_width;
@@ -76,44 +48,31 @@ int px_frame_init(PXFrame* frame) {
     return 0;
 }
 
-PXFrame* px_frame_new(int width, int height, enum AVPixelFormat pix_fmt) {
-
-    PXFrame* frame = calloc(1, sizeof(PXFrame));
-    if (!frame) {
-        oom(sizeof(PXFrame));
-        return NULL;
-    }
-
+int px_frame_new(PXFrame* frame, int width, int height, PXPixelFormat pix_fmt,
+                 int stride[static PX_FRAME_MAX_PLANES]) {
     *frame = (PXFrame) {
         .width = width,
         .height = height,
         .pix_fmt = pix_fmt,
     };
 
-    if (px_frame_init(frame) < 0) {
-        goto fail;
+    int ret = px_frame_init(frame);
+    if (ret < 0)
+        return ret;
+
+    for (int i = 0; i < frame->n_planes; i++) {
+        frame->planes[i].stride = stride[i] ? stride[i] : frame->planes[i].width * frame->bytes_per_comp;
     }
 
-    if (px_frame_alloc_bufs(frame) < 0) {
-        goto fail;
-    }
+    ret = px_frame_alloc_bufs(frame);
+    if (ret < 0)
+        return ret;
 
-    return frame;
-
-fail:
-    px_frame_free(&frame);
-    return NULL;
+    return 0;
 }
 
 void px_frame_free(PXFrame** frame) {
-
-    PXFrame* fp = *frame;
-    for (int i = 0; i < fp->n_planes; i++) {
-        free_s(&fp->planes[i].data);
-        free_s(&fp->planes[i].data[0]);
-        free_s(&fp->planes[i]);
-    }
-
+    free_s((*frame)->planes[0].data);
     free_s(frame);
 }
 
@@ -124,26 +83,17 @@ void px_frame_copy(PXFrame* dest, const PXFrame* src) {
     assert(src->height == dest->height);
 
     for (int i = 0; i < src->n_planes; i++) {
-
-        PXVideoPlane* dest_plane = &dest->planes[i];
-        const PXVideoPlane* src_plane = &src->planes[i];
-
-        for (int line = 0; line < dest_plane->height; line++) {
-            size_t line_sz = dest_plane->width * dest->bytes_per_comp;
-            memcpy(dest_plane->data[line], src_plane->data[line], line_sz);
-        }
+        assert(src->planes[i].stride == dest->planes[i].stride);
     }
 
-    dest->pts = src->pts;
-    dest->timebase = src->timebase;
+    memcpy(dest->planes[0].data, src->planes[0].data, px_frame_size(src));
 }
 
 size_t px_plane_size(const PXFrame* frame, int idx) {
-    return frame->planes[idx].width * frame->planes[idx].height * frame->bytes_per_comp;
+    return (size_t)(frame->planes[idx].stride * frame->planes[idx].height);
 }
 
 size_t px_frame_size(const PXFrame* frame) {
-
     size_t size = 0;
     for (int i = 0; i < frame->n_planes; i++) {
         size += px_plane_size(frame, i);
@@ -152,109 +102,259 @@ size_t px_frame_size(const PXFrame* frame) {
     return size;
 }
 
-int px_frame_from_av(PXFrame* dest, const AVFrame* avframe) {
+static enum AVPixelFormat get_planar_equivalent(enum AVPixelFormat pix_fmt) {
+    const AVPixFmtDescriptor* fmt_desc = av_pix_fmt_desc_get(pix_fmt);
+    if (!fmt_desc)
+        return AV_PIX_FMT_NONE;
 
-    *dest = (PXFrame) {
-        .width = avframe->width,
-        .height = avframe->height,
-        .pix_fmt = avframe->format,
-        .pts = avframe->pts,
-        .timebase = avframe->time_base,
-    };
+    // yuvXXXp*, gbr[a]p*, gray[a]*
+    if (strncmp(fmt_desc->name, "yuv", 3) == 0 || strncmp(fmt_desc->name, "gbr", 3) == 0 ||
+        strncmp(fmt_desc->name, "gray", 4) == 0 || strncmp(fmt_desc->name, "ya", 2) == 0)
+        return pix_fmt;
 
-    px_frame_init(dest);
+    // nvXX
+    switch (pix_fmt) {
+        case AV_PIX_FMT_NV12:
+        case AV_PIX_FMT_NV21:
+            return AV_PIX_FMT_YUV420P;
+        case AV_PIX_FMT_NV16:
+            return AV_PIX_FMT_YUV422P;
+        case AV_PIX_FMT_NV24:
+        case AV_PIX_FMT_NV42:
+            return AV_PIX_FMT_YUV444P;
+        case AV_PIX_FMT_NV20:
+            return AV_PIX_FMT_YUV422P10;
+        default:
+            break;
+    }
 
-    for (int i = 0; i < dest->n_planes; i++) {
-        dest->planes[i].data = calloc(dest->planes[i].height, sizeof(uint8_t*));
-        if (!dest->planes[i].data) {
-            oom(dest->planes[i].height * sizeof(uint8_t*));
-            return AVERROR(ENOMEM);
-        }
-
-        for (int line = 0; line < dest->planes[i].height; line++) {
-            dest->planes[i].data[line] = avframe->data[i] + avframe->linesize[i] * line;
+    // convert rgb formats to gbr[a]p*
+    if (fmt_desc->flags & AV_PIX_FMT_FLAG_RGB) {
+        switch (pix_fmt) {
+            case AV_PIX_FMT_RGB24:
+            case AV_PIX_FMT_BGR24:
+            case AV_PIX_FMT_RGB8:
+            case AV_PIX_FMT_BGR8:
+            case AV_PIX_FMT_RGB4:
+            case AV_PIX_FMT_BGR4:
+            case AV_PIX_FMT_RGB4_BYTE:
+            case AV_PIX_FMT_BGR4_BYTE:
+            case AV_PIX_FMT_RGB565:
+            case AV_PIX_FMT_BGR565:
+                return AV_PIX_FMT_GBRP;
+            case AV_PIX_FMT_RGB48:
+            case AV_PIX_FMT_BGR48:
+                return AV_PIX_FMT_GBRP16;
+            case AV_PIX_FMT_RGBF32:
+                return AV_PIX_FMT_GBRPF32;
+            case AV_PIX_FMT_RGBA:
+            case AV_PIX_FMT_BGRA:
+            case AV_PIX_FMT_ARGB:
+            case AV_PIX_FMT_ABGR:
+                return AV_PIX_FMT_GBRAP;
+            case AV_PIX_FMT_RGBA64:
+            case AV_PIX_FMT_BGRA64:
+                return AV_PIX_FMT_GBRAP16;
+            case AV_PIX_FMT_RGBAF16:
+            case AV_PIX_FMT_RGBAF32:
+                return AV_PIX_FMT_GBRAPF32;
+            default:
+                break;
         }
     }
 
-    return 0;
+    // misc
+    switch (pix_fmt) {
+        case AV_PIX_FMT_P010:
+            return AV_PIX_FMT_YUV420P10;
+        case AV_PIX_FMT_P012:
+            return AV_PIX_FMT_YUV420P12;
+        case AV_PIX_FMT_P016:
+            return AV_PIX_FMT_YUV420P16;
+        case AV_PIX_FMT_YVYU422:
+        case AV_PIX_FMT_YUYV422:
+        case AV_PIX_FMT_UYVY422:
+        case AV_PIX_FMT_Y210:
+        case AV_PIX_FMT_P210:
+        // case AV_PIX_FMT_P212: // will be added once it makes it into a release
+        case AV_PIX_FMT_P216:
+            return AV_PIX_FMT_YUV422P;
+        case AV_PIX_FMT_P410:
+        // case AV_PIX_FMT_P412: // will be added once it makes it into a release
+        case AV_PIX_FMT_P416:
+            return AV_PIX_FMT_YUV444P;
+        case AV_PIX_FMT_AYUV64:
+            return AV_PIX_FMT_YUVA444P;
+        default:
+            return AV_PIX_FMT_NONE;
+    }
 }
 
-void px_frame_assert_correctly_converted(const AVFrame* src, const PXFrame* dest) {
+// only valid for formats returned by get_planar_equivalent()
+static PXPixelFormat px_pix_fmt_from_planar_av(enum AVPixelFormat av_fmt) {
+    const AVPixFmtDescriptor* av_fmt_desc = av_pix_fmt_desc_get(av_fmt);
+    if (!av_fmt_desc)
+        return PX_PIX_FMT_NONE;
 
+    PXComponentType comp_type =
+        av_fmt_desc->flags & AV_PIX_FMT_FLAG_FLOAT ? PX_COMP_TYPE_FLOAT : PX_COMP_TYPE_INT;
+
+    PXColorModel color_model =
+        av_fmt_desc->flags & AV_PIX_FMT_FLAG_RGB
+            ? PX_COLOR_MODEL_RGB
+            : (av_fmt_desc->nb_components >= 3 ? PX_COLOR_MODEL_YUV : PX_COLOR_MODEL_GRAY);
+
+    return $px_make_pix_fmt_tag(color_model, av_fmt_desc->nb_components, comp_type,
+                                av_fmt_desc->comp[0].depth, av_fmt_desc->log2_chroma_w,
+                                av_fmt_desc->log2_chroma_h);
+}
+
+static void px_frame_assert_correctly_converted(const AVFrame* src, const PXFrame* dest) {
     assert(src->width == dest->width);
     assert(src->height == dest->height);
-    assert(src->format == dest->pix_fmt);
+    assert(src->format == dest->av_pix_fmt);
+
+    const AVPixFmtDescriptor* av_fmt_desc = av_pix_fmt_desc_get(src->format);
+    assert(av_fmt_desc);
+
+    PXPixFmtDescriptor px_fmt_desc;
+    px_pix_fmt_get_desc(&px_fmt_desc, dest->pix_fmt);
+
+    assert(px_fmt_desc.n_planes == av_fmt_desc->nb_components);
+    assert(px_fmt_desc.bits_per_comp == av_fmt_desc->comp[0].depth);
+    assert(px_fmt_desc.log2_chroma[0] == av_fmt_desc->log2_chroma_w);
+    assert(px_fmt_desc.log2_chroma[1] == av_fmt_desc->log2_chroma_h);
 
     for (int i = 0; i < dest->n_planes; i++) {
-        for (int line = 0; line < dest->planes[i].height; line++) {
-
-            size_t av_stride = src->linesize[i];
-            size_t actual_stride = dest->planes[i].width * dest->bytes_per_comp;
-
-            uint8_t* dest_line = dest->planes[i].data[line];
-            uint8_t* src_line = src->data[i] + av_stride * line;
-
-            int ret = memcmp(dest_line, src_line, actual_stride);
-            assert(ret == 0);
-
-            (void)ret; // silence unused warning for release builds
-        }
+        assert(src->linesize[i] == dest->planes[i].stride);
+        assert(memcmp(dest->planes[i].data, src->data[i], px_plane_size(dest, i)) == 0);
     }
 }
 
-int px_fb_init(PXFrameBuffer* fb, int width, int height, enum AVPixelFormat pix_fmt) {
-
-    assert(fb->max_frames > 0);
-
-    fb->frames = calloc(fb->max_frames, sizeof(PXFrame*));
-    if (!fb->frames) {
-        oom(fb->max_frames * sizeof(PXFrame*));
-        return AVERROR(ENOMEM);
+int px_frame_from_av(PXFrame* dest, const AVFrame* av_frame) {
+    enum AVPixelFormat planar_equiv = get_planar_equivalent(av_frame->format);
+    if (planar_equiv == AV_PIX_FMT_NONE) {
+        const char* fmt_name = av_get_pix_fmt_name(av_frame->format);
+        $px_log(PX_LOG_ERROR, "Unsupported pixel format %s\n", fmt_name ? fmt_name : "(unknown)");
+        return AVERROR(EINVAL);
     }
 
-    for (int i = 0; i < fb->max_frames; i++) {
-        fb->frames[i] = px_frame_new(width, height, pix_fmt);
-        if (!fb->frames[i]) {
-            px_fb_free(fb);
-            return AVERROR(ENOMEM);
+    *dest = (PXFrame) {
+        .width = av_frame->width,
+        .height = av_frame->height,
+        .pix_fmt = px_pix_fmt_from_planar_av(planar_equiv),
+    };
+
+    int ret = px_frame_init(dest);
+    if (ret < 0)
+        return ret;
+
+    int strides[PX_FRAME_MAX_PLANES] = {0};
+    for (int i = 0; i < PX_FRAME_MAX_PLANES; i++) {
+        dest->planes[i].stride = strides[i] = planar_equiv == av_frame->format
+                                                  ? av_frame->linesize[i]
+                                                  : dest->planes[i].width * dest->bytes_per_comp;
+    }
+
+    ret = px_frame_alloc_bufs(dest);
+    if (ret < 0)
+        return ret;
+
+    dest->av_pix_fmt = planar_equiv;
+
+    if (planar_equiv != av_frame->format) {
+        $px_log(PX_LOG_INFO, "Converting from %s to %s\n", av_get_pix_fmt_name(av_frame->format),
+                av_get_pix_fmt_name(planar_equiv));
+
+        struct SwsContext* sws =
+            sws_getContext(av_frame->width, av_frame->height, av_frame->format, dest->width, dest->height,
+                           planar_equiv, SWS_BILINEAR, NULL, NULL, NULL);
+        if (!sws) {
+            $px_lav_throw_msg("sws_getContext", AVERROR(EINVAL));
+            return AVERROR(EINVAL);
         }
-    }
 
-    fb->num_frames = 0;
-    fb->max_frames = fb->max_frames;
+        const uint8_t* const* src_data_decayed = (const uint8_t* const*)av_frame->data;
+        uint8_t* dest_plane_ptrs[PX_FRAME_MAX_PLANES] = {0};
+        for (int i = 0; i < dest->n_planes; i++) {
+            dest_plane_ptrs[i] = dest->planes[i].data;
+        }
+        sws_scale(sws, src_data_decayed, av_frame->linesize, 0, av_frame->height, dest_plane_ptrs, strides);
+
+    } else {
+        for (int i = 0; i < dest->n_planes; i++) {
+            memcpy(dest->planes[i].data, av_frame->data[i], px_plane_size(dest, i));
+        }
+        px_frame_assert_correctly_converted(av_frame, dest);
+    }
 
     return 0;
 }
 
-void px_fb_free(PXFrameBuffer* fb) {
-
-    px_fb_clear(fb);
-    free_s(&fb->frames);
-}
-
-int px_fb_add(PXFrameBuffer* fb, const PXFrame* frame) {
-
-    if (fb->num_frames >= fb->max_frames) {
-        $px_log(PX_LOG_ERROR, "Frame buffer at %p is full (%d/%d)\n", fb, fb->num_frames, fb->max_frames);
-        return AVERROR(ENOMEM);
+void px_frame_to_av(AVFrame* dest, const PXFrame* px_frame) {
+    for (size_t i = 0; i < FF_ARRAY_ELEMS(dest->buf); i++) {
+        av_buffer_unref(&dest->buf[i]);
     }
 
-    PXFrame* new_frame = px_frame_new(frame->width, frame->height, frame->pix_fmt);
-    if (!new_frame)
-        return AVERROR(ENOMEM);
+    dest->width = px_frame->width;
+    dest->height = px_frame->height;
+    dest->format = px_frame->av_pix_fmt;
 
-    px_frame_copy(new_frame, frame);
-
-    fb->frames[fb->num_frames++] = new_frame;
-
-    return 0;
-}
-
-void px_fb_clear(PXFrameBuffer* fb) {
-
-    for (int i = 0; i < fb->num_frames; i++) {
-        px_frame_free(&fb->frames[i]);
+    for (int i = 0; i < px_frame->n_planes; i++) {
+        dest->linesize[i] = px_frame->planes[i].stride;
+        dest->data[i] = px_frame->planes[i].data;
     }
-
-    fb->num_frames = 0;
 }
+
+// int px_fb_init(PXFrameBuffer* fb, int width, int height, PXPixelFormat pix_fmt) {
+//     assert(fb->max_frames > 0);
+
+//     fb->frames = calloc(fb->max_frames, sizeof(PXFrame*));
+//     if (!fb->frames) {
+//         oom(fb->max_frames * sizeof(PXFrame*));
+//         return AVERROR(ENOMEM);
+//     }
+
+//     for (int i = 0; i < fb->max_frames; i++) {
+//         fb->frames[i] = px_frame_new(width, height, pix_fmt, NULL);
+//         if (!fb->frames[i]) {
+//             px_fb_free(fb);
+//             return AVERROR(ENOMEM);
+//         }
+//     }
+
+//     fb->num_frames = 0;
+//     fb->max_frames = fb->max_frames;
+
+//     return 0;
+// }
+
+// void px_fb_free(PXFrameBuffer* fb) {
+//     px_fb_clear(fb);
+//     free_s(&fb->frames);
+// }
+
+// int px_fb_add(PXFrameBuffer* fb, const PXFrame* frame) {
+//     if (fb->num_frames >= fb->max_frames) {
+//         $px_log(PX_LOG_ERROR, "Frame buffer at %p is full (%d/%d)\n", fb, fb->num_frames,
+//         fb->max_frames); return AVERROR(ENOMEM);
+//     }
+
+//     PXFrame* new_frame = px_frame_new(frame->width, frame->height, frame->pix_fmt);
+//     if (!new_frame)
+//         return AVERROR(ENOMEM);
+
+//     px_frame_copy(new_frame, frame);
+
+//     fb->frames[fb->num_frames++] = new_frame;
+
+//     return 0;
+// }
+
+// void px_fb_clear(PXFrameBuffer* fb) {
+//     for (int i = 0; i < fb->num_frames; i++) {
+//         px_frame_free(&fb->frames[i]);
+//     }
+
+//     fb->num_frames = 0;
+// }

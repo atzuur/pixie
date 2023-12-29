@@ -26,13 +26,13 @@ app_obj_files := $(app_src_files:%=$(build_dir)/%.o)
 
 dep_files := $(lib_obj_files:.o=.d) $(app_obj_files:.o=.d)
 
-warns := $(strip -Wall -Wextra -Wpedantic -Wshadow -Wformat=2 \
+warns := $(strip -Wall -Wextra -Wpedantic -Wshadow -Wformat=2 -Wconversion \
 	-Wno-gnu-zero-variadic-macro-arguments -Wno-dollar-in-identifier-extension \
-	-Wno-for-loop-analysis -Wno-cast-function-type)
+	-Wno-cast-function-type -Wno-fixed-enum-extension)
 
 includes := $(strip $(incl_dirs:%=-I%) $(if $(windows), -isystem$(ff_dir)/include))
 
-ff_libs := $(strip $(if $(windows), -L$(ff_dir)/lib -lavcodec -lavformat -lavutil, \
+ff_libs := $(strip $(if $(windows), -L$(ff_dir)/lib -lavcodec -lavformat -lavutil -lswscale, \
 	$(shell sh scripts/get-ff-libs.sh)))
 ifeq ($(ff_libs),)
 	exit 1

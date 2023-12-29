@@ -2,6 +2,7 @@
 #include "util/utils.h"
 
 #include <pixie/pixie.h>
+#include "frame_internal.h"
 
 // make `*path` point to a string containing `folder_name` + PATH_SEP + `filename`
 static int scroll_next_filename(char** path, const char* folder_name, const char* filename) {
@@ -104,18 +105,10 @@ static int filter_encode_frame(PXContext* pxc, AVFrame* frame) {
     if (!frame) // flush
         goto skip_filters;
 
-    ret = av_frame_make_writable(frame);
-    if (ret < 0) {
-        $lav_throw_msg("av_frame_make_writable", ret);
-        return ret;
-    }
-
     PXFrame px_frame = {0};
     ret = px_frame_from_av(&px_frame, frame);
     if (ret < 0)
         return ret;
-
-    px_frame_assert_correctly_converted(frame, &px_frame);
 
     for (int i = 0; i < pxc->fltr_ctx.n_filters; i++) {
         PXFilter* fltr = &pxc->fltr_ctx.filters[i];
@@ -129,6 +122,8 @@ static int filter_encode_frame(PXContext* pxc, AVFrame* frame) {
             return ret;
         }
     }
+
+    px_frame_to_av(frame, &px_frame);
 
 skip_filters:
     ret = px_encode_frame(&pxc->media_ctx, frame);
@@ -148,7 +143,7 @@ static int transcode_packet(PXContext* pxc, AVPacket* pkt) {
     AVCodecContext* dec_ctx = pxc->media_ctx.coding_ctx_arr[pxc->media_ctx.stream_idx].dec_ctx;
     ret = avcodec_send_packet(dec_ctx, pkt);
     if (ret < 0) {
-        $lav_throw_msg("avcodec_send_packet", ret);
+        $px_lav_throw_msg("avcodec_send_packet", ret);
         return ret;
     }
 
@@ -162,7 +157,7 @@ static int transcode_packet(PXContext* pxc, AVPacket* pkt) {
             ret = 0;
             break;
         } else if (ret < 0) {
-            $lav_throw_msg("avcodec_receive_frame", ret);
+            $px_lav_throw_msg("avcodec_receive_frame", ret);
             return ret;
         }
         pxc->media_ctx.frames_decoded++;
@@ -205,7 +200,7 @@ int px_transcode(PXContext* pxc) {
         if (stream_type != AVMEDIA_TYPE_VIDEO)
             continue;
 
-        pxc->media_ctx.stream_idx = i;
+        pxc->media_ctx.stream_idx = (int)i;
 
         if (pxc->media_ctx.coding_ctx_arr[i].dec_ctx->codec->capabilities & AV_CODEC_CAP_DELAY) {
             ret = transcode_packet(pxc, NULL);
@@ -222,7 +217,7 @@ int px_transcode(PXContext* pxc) {
 
     ret = av_write_trailer(pxc->media_ctx.ofmt_ctx);
     if (ret < 0)
-        $lav_throw_msg("av_write_trailer", ret);
+        $px_lav_throw_msg("av_write_trailer", ret);
 
 end:
     pxc->transc_thread.done = true;

@@ -4,8 +4,6 @@
 #pragma once
 
 #include <stdbool.h>
-#include <stdint.h> // intptr_t
-#include <string.h> // memset
 
 #ifdef _WIN32
 #define WIN32_THREADS

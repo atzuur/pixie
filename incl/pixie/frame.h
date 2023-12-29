@@ -1,42 +1,37 @@
 #pragma once
 
-#include <libavutil/frame.h>
-#include <libavutil/pixfmt.h>
-#include <libavutil/rational.h>
+#include <pixie/pixfmt.h>
 
-#include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
+
+#define PX_FRAME_MAX_PLANES 4
 
 typedef struct PXVideoPlane {
 
     int width;
     int height;
 
-    // `height` pointers to each line
-    uint8_t** data;
+    uint8_t* data;
+    int stride;
 
 } PXVideoPlane;
 
 typedef struct PXFrame {
 
-    // 4 planes max
-    PXVideoPlane planes[4];
+    // y+u+v / r+g+b / gray [+a]
+    PXVideoPlane planes[PX_FRAME_MAX_PLANES];
     int n_planes;
-
-    enum AVPixelFormat pix_fmt;
 
     int width;
     int height;
 
-    // bits per pixel component, e.g. 8, 10, 16 (padding not included)
-    int bits_per_comp;
+    int bytes_per_comp;
 
-    // bytes per pixel component, e.g. 1 for 8-bit, 2 for 16-bit,
-    // padding is included (10-bit will be 2)
-    size_t bytes_per_comp;
+    PXPixelFormat pix_fmt;
 
-    int64_t pts;
-    AVRational timebase;
+    // AVPixelFormat enum value, only used internally for conversions
+    int av_pix_fmt;
 
 } PXFrame;
 
@@ -48,7 +43,11 @@ typedef struct PXFrameBuffer {
 
 } PXFrameBuffer;
 
-PXFrame* px_frame_new(int width, int height, enum AVPixelFormat pix_fmt);
+int px_frame_init(PXFrame* frame);
+int px_frame_alloc_bufs(PXFrame* frame);
+
+int px_frame_new(PXFrame* frame, int width, int height, PXPixelFormat pix_fmt,
+                 int stride[static PX_FRAME_MAX_PLANES]);
 void px_frame_free(PXFrame** frame);
 
 void px_frame_copy(PXFrame* dest, const PXFrame* src);
@@ -56,10 +55,7 @@ void px_frame_copy(PXFrame* dest, const PXFrame* src);
 size_t px_plane_size(const PXFrame* frame, int idx);
 size_t px_frame_size(const PXFrame* frame);
 
-int px_frame_from_av(PXFrame* dest, const AVFrame* avframe);
-void px_frame_assert_correctly_converted(const AVFrame* src, const PXFrame* dest);
-
-int px_fb_init(PXFrameBuffer* fb, int width, int height, enum AVPixelFormat pix_fmt);
+int px_fb_init(PXFrameBuffer* fb, int width, int height, PXPixelFormat pix_fmt);
 void px_fb_free(PXFrameBuffer* fb);
 
 int px_fb_add(PXFrameBuffer* fb, const PXFrame* frame);

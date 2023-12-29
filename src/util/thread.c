@@ -2,6 +2,9 @@
 
 #include <pixie/util/thread.h>
 
+#include <stdint.h>
+#include <string.h>
+
 int px_thrd_launch(PXThread* thread) {
     assert(thread->func);
 

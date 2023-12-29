@@ -39,7 +39,7 @@ bool file_exists(const char* path) {
 int nanosleep(const struct timespec* req, struct timespec* rem);
 
 int get_available_threads(void) {
-    long ret = sysconf(_SC_NPROCESSORS_ONLN);
+    int ret = (int)sysconf(_SC_NPROCESSORS_ONLN);
     return ret < 1 ? 1 : ret;
 }
 

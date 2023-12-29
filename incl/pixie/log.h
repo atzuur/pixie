@@ -2,7 +2,6 @@
 
 #include <libavutil/log.h>
 
-#include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -24,10 +23,10 @@ extern const int px_log_colors[];
 
 #define $px_log_c(c) (px_log_color(c, (char[16]) {0}))
 #define PX_RESET "\033[0m"
+#define PX_LOG_MAX_COLOR_LEN 16
 
-// writes 16 chars at most
-static inline char* px_log_color(int c, char* buf) {
-    snprintf(buf, 16, "\033[38;5;%dm", c);
+static inline char* px_log_color(int c, char buf[static PX_LOG_MAX_COLOR_LEN]) {
+    snprintf(buf, PX_LOG_MAX_COLOR_LEN, "\033[38;5;%dm", c);
     return buf;
 }
 
@@ -64,5 +63,5 @@ static inline void px_log_set_level(PXLogLevel level) {
     px_global_loglevel = level;
 }
 
-#define $px_log(level, msg, ...) px_log_msg(level, "%s(): " msg, __func__, ##__VA_ARGS__)
+#define $px_log(level, msg, ...) px_log_msg(level, "%s(): " msg, __func__ __VA_OPT__(, ) __VA_ARGS__)
 void px_log_msg(PXLogLevel level, const char* msg, ...);

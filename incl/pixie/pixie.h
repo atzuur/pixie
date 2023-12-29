@@ -1,13 +1,11 @@
 #pragma once
 
-#include "coding.h"
-#include "filter.h"
-#include "log.h"
-#include "settings.h"
-#include "util/thread.h"
+#include <pixie/coding.h>
+#include <pixie/filter.h>
+#include <pixie/settings.h>
+#include <pixie/util/thread.h>
 
 #include <stdbool.h>
-#include <stdint.h>
 
 #define PX_VERSION "0.1.1"
 

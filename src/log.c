@@ -2,7 +2,7 @@
 
 PXLogLevel px_global_loglevel = PX_LOG_WARN; // default
 
-const char* const px_log_names[] = {
+const char* const px_log_names[PX_LOG_COUNT] = {
     "quiet", "error", "progress", "warn", "info", "verbose",
 };
 const int px_log_colors[PX_LOG_COUNT] = {

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "settings.h"
+#include <pixie/settings.h>
 
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
@@ -24,13 +24,13 @@ typedef struct PXMediaContext {
     // context for transcoding each stream
     PXCodingContext* coding_ctx_arr;
 
-    uint64_t frames_decoded;
-    uint64_t decoded_frames_dropped;
-    uint64_t frames_output;
+    int64_t frames_decoded;
+    int64_t decoded_frames_dropped;
+    int64_t frames_output;
 
 } PXMediaContext;
 
-#define $lav_throw_msg(func, err)                                                            \
+#define $px_lav_throw_msg(func, err)                                                         \
     $px_log(PX_LOG_ERROR, "%s() failed at %s:%d : %s (code %d)\n", func, __FILE__, __LINE__, \
             av_err2str(err), err)
 
