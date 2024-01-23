@@ -53,6 +53,7 @@ dkms.conf
 
 # media files
 *.y4m
+*.yuv
 *.mp4
 *.mkv
 *.avi
@@ -62,6 +63,9 @@ dkms.conf
 *.mov
 *.webm
 *.ppm
+*.png
+*.gif
+*.pfm
 
 # project files
 .vscode

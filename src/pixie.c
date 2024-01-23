@@ -1,185 +1,219 @@
-#include "../tests/test_filter.c" // TODO: remove this
-#include "util/utils.h"
+#include "internals.h"
 
 #include <pixie/pixie.h>
-#include "frame_internal.h"
+#include <pixie/util/utils.h>
 
-// make `*path` point to a string containing `folder_name` + PATH_SEP + `filename`
-static int scroll_next_filename(char** path, const char* folder_name, const char* filename) {
-    size_t out_path_len = strlen(folder_name) + sizeof PATH_SEP + strlen(filename);
+#include <libswscale/swscale.h>
+#include <libavutil/pixdesc.h>
+#include <libavformat/avformat.h>
+#include <libavcodec/avcodec.h>
 
-    *path = realloc(*path, out_path_len + 1);
-    if (!*path) {
-        oom(out_path_len + 1);
-        return AVERROR(ENOMEM);
+PXContext* px_ctx_alloc(void) {
+    PXContext* pxc = calloc(1, sizeof *pxc);
+    if (!pxc)
+        px_oom_msg(sizeof *pxc);
+    return pxc;
+}
+
+static int conv_pix_fmt(AVFrame* dest, const AVFrame* src, enum AVPixelFormat dest_pix_fmt) {
+    struct SwsContext* sws = sws_getContext(src->width, src->height, src->format, src->width, src->height,
+                                            dest_pix_fmt, SWS_BILINEAR, NULL, NULL, NULL);
+    if (!sws) {
+        LAV_THROW_MSG("sws_getContext", AVERROR(EINVAL));
+        return AVERROR(EINVAL);
     }
 
-    memset(*path, 0, out_path_len + 1);
-    strcat(*path, folder_name);
-    strcat(*path, PATH_SEP);
-    strcat(*path, filename);
+    int ret = av_frame_copy_props(dest, src);
+    if (ret < 0) {
+        LAV_THROW_MSG("av_frame_copy_props", ret);
+        return ret;
+    }
+    dest->format = dest_pix_fmt;
+    dest->width = src->width;
+    dest->height = src->height;
+
+    ret = sws_scale_frame(sws, dest, src);
+    if (ret < 0) {
+        LAV_THROW_MSG("sws_scale_frame", ret);
+        return ret;
+    }
+    sws_freeContext(sws);
 
     return 0;
 }
 
-int px_main(PXSettings s) {
+static int read_frame(PXMediaContext* ctx, AVPacket* pkt) {
+    int ret = av_read_frame(ctx->ifmt_ctx, pkt);
+    if (ret == AVERROR_EOF) {
+        goto early_ret;
+    } else if (ret < 0) {
+        LAV_THROW_MSG("av_read_frame", ret);
+        goto early_ret;
+    }
 
-    int ret = 0;
+    ctx->stream_idx = pkt->stream_index;
 
-    PXFilter test_fltr = {
-        .name = "test",
-        .init = test_filter_init,
-        .apply = test_filter_apply,
-        .free = test_filter_free,
-    };
+    enum AVMediaType stream_type = ctx->ifmt_ctx->streams[ctx->stream_idx]->codecpar->codec_type;
+    if (stream_type != AVMEDIA_TYPE_VIDEO) {
+        AVRational in_tb = ctx->ifmt_ctx->streams[ctx->stream_idx]->time_base;
+        AVRational out_tb = ctx->ofmt_ctx->streams[ctx->stream_idx]->time_base;
+        av_packet_rescale_ts(pkt, in_tb, out_tb);
 
-    PXContext pxc = {
-        .settings = s,
-        .fltr_ctx = {.filters = &test_fltr, .n_filters = 1},
-    };
-
-    for (int i = 0; i < pxc.fltr_ctx.n_filters; i++) {
-        PXFilter* fltr = &pxc.fltr_ctx.filters[i];
-        ret = fltr->init(fltr, NULL); // TODO: pass settings
+        ret = av_interleaved_write_frame(ctx->ofmt_ctx, pkt);
         if (ret < 0) {
-            $px_log(PX_LOG_ERROR, "Failed to initialize filter \"%s\"\n", fltr->name);
-            return ret;
+            LAV_THROW_MSG("av_interleaved_write_frame", ret);
+            goto early_ret;
         }
+        ret = AVERROR(EAGAIN);
+        goto early_ret;
     }
 
-    pxc.transc_thread = (PXThread) {
-        .func = (PXThreadFunc)px_transcode,
-        .args = &pxc,
-    };
+    return 0;
 
-    for (pxc.input_idx = 0; pxc.input_idx < pxc.settings.n_input_files; pxc.input_idx++) {
-
-        if (pxc.settings.n_input_files > 1) {
-            ret = scroll_next_filename(&pxc.settings.output_file, pxc.settings.output_folder,
-                                       get_basename(pxc.settings.input_files[pxc.input_idx]));
-            if (ret < 0)
-                break;
-        }
-
-        // TODO: check if input is same as output
-
-        ret = px_media_ctx_init(&pxc.media_ctx, &pxc.settings, pxc.input_idx);
-        if (ret < 0)
-            break;
-
-        ret = px_thrd_launch(&pxc.transc_thread);
-        if (ret < 0)
-            break;
-
-        while (!pxc.transc_thread.done) {
-            sleep_ms(10);
-            $px_log(PX_LOG_PROGRESS, "Decoded %lu frames, dropped %lu frames, encoded %lu frames\r",
-                    pxc.media_ctx.frames_decoded, pxc.media_ctx.decoded_frames_dropped,
-                    pxc.media_ctx.frames_output);
-        }
-
-        putchar('\n');
-
-        int transc_ret = 0;
-        ret = px_thrd_join(&pxc.transc_thread, &transc_ret);
-        if (ret < 0)
-            break;
-
-        if (transc_ret < 0) {
-            $px_log(PX_LOG_ERROR, "Error occurred while processing file \"%s\" (stream index %d)\n",
-                    pxc.settings.input_files[pxc.input_idx], pxc.media_ctx.stream_idx);
-            ret = transc_ret;
-            break;
-        }
-    }
-
-    px_ctx_free(&pxc);
-
+early_ret:
+    av_packet_unref(pkt);
     return ret;
 }
 
+static int encode_frame(PXMediaContext* ctx, const AVFrame* frame) {
+    AVCodecContext* enc_ctx = ctx->coding_ctx_arr[ctx->stream_idx].enc_ctx;
+    int ret = avcodec_send_frame(enc_ctx, frame);
+    if (ret < 0) {
+        LAV_THROW_MSG("avcodec_send_frame", ret);
+        return ret;
+    }
+
+    AVPacket* pkt = av_packet_alloc();
+    while (ret >= 0) {
+        ret = avcodec_receive_packet(enc_ctx, pkt);
+        if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
+            ret = 0;
+            goto end;
+        } else if (ret < 0) {
+            LAV_THROW_MSG("avcodec_receive_packet", ret);
+            goto end;
+        }
+
+        pkt->stream_index = ctx->stream_idx;
+
+        const AVStream* istream = ctx->ifmt_ctx->streams[ctx->stream_idx];
+        const AVStream* ostream = ctx->ofmt_ctx->streams[ctx->stream_idx];
+        pkt->duration = ostream->time_base.den / ostream->time_base.num / istream->avg_frame_rate.num *
+                        istream->avg_frame_rate.den;
+
+        av_packet_rescale_ts(pkt, istream->time_base, ostream->time_base);
+
+        ret = av_interleaved_write_frame(ctx->ofmt_ctx, pkt);
+        if (ret < 0) {
+            LAV_THROW_MSG("av_interleaved_write_frame", ret);
+            goto end;
+        }
+
+        ctx->frames_output++;
+        av_packet_unref(pkt);
+    }
+
+end:
+    av_packet_free(&pkt);
+    return 0;
+}
+
 static int filter_encode_frame(PXContext* pxc, AVFrame* frame) {
-
-    int ret = 0;
-
-    if (!frame) // flush
-        goto skip_filters;
-
     PXFrame px_frame = {0};
-    ret = px_frame_from_av(&px_frame, frame);
+    int ret = px_frame_from_av(&px_frame, frame);
     if (ret < 0)
         return ret;
 
-    for (int i = 0; i < pxc->fltr_ctx.n_filters; i++) {
-        PXFilter* fltr = &pxc->fltr_ctx.filters[i];
+    for (int i = 0; i < pxc->fltr_ctx->n_filters; i++) {
+        PXFilter* fltr = pxc->fltr_ctx->filters[i];
 
         fltr->frame = &px_frame;
-        fltr->frame_num = pxc->media_ctx.frames_decoded;
+        fltr->frame_num = pxc->media_ctx->frames_decoded;
 
         ret = fltr->apply(fltr);
         if (ret < 0) {
-            $px_log(PX_LOG_ERROR, "Failed to apply filter \"%s\"\n", fltr->name);
-            return ret;
+            PX_LOG(PX_LOG_ERROR, "Failed to apply filter \"%s\"\n", fltr->name);
+            goto end;
         }
     }
 
     px_frame_to_av(frame, &px_frame);
 
-skip_filters:
-    ret = px_encode_frame(&pxc->media_ctx, frame);
-    if (ret == AVERROR_EOF) {
-        return 0;
-    } else if (ret < 0) {
-        return ret;
+    enum AVPixelFormat enc_pix_fmt =
+        pxc->media_ctx->coding_ctx_arr[pxc->media_ctx->stream_idx].enc_ctx->pix_fmt;
+    bool conv_needed = frame->format != enc_pix_fmt;
+
+    AVFrame* conv_frame = frame;
+    if (conv_needed) {
+        conv_frame = av_frame_alloc();
+        if (!conv_frame) {
+            px_oom_msg(sizeof *conv_frame);
+            ret = AVERROR(ENOMEM);
+            goto end;
+        }
+
+        PX_LOG(PX_LOG_INFO, "Converting frame from %s to %s\n", av_get_pix_fmt_name(frame->format),
+               av_get_pix_fmt_name(enc_pix_fmt));
+        ret = conv_pix_fmt(conv_frame, frame, enc_pix_fmt);
+        if (ret < 0) {
+            av_frame_free(&conv_frame);
+            goto end;
+        }
     }
 
-    return 0;
+    ret = encode_frame(pxc->media_ctx, conv_frame);
+    if (ret == AVERROR_EOF)
+        ret = 0;
+
+    if (conv_needed)
+        av_frame_free(&conv_frame);
+
+end:
+    px_frame_free_internal(&px_frame);
+    return ret;
 }
 
 static int transcode_packet(PXContext* pxc, AVPacket* pkt) {
-
-    int ret = 0;
-
-    AVCodecContext* dec_ctx = pxc->media_ctx.coding_ctx_arr[pxc->media_ctx.stream_idx].dec_ctx;
-    ret = avcodec_send_packet(dec_ctx, pkt);
+    AVCodecContext* dec_ctx = pxc->media_ctx->coding_ctx_arr[pxc->media_ctx->stream_idx].dec_ctx;
+    int ret = avcodec_send_packet(dec_ctx, pkt);
     if (ret < 0) {
-        $px_lav_throw_msg("avcodec_send_packet", ret);
+        LAV_THROW_MSG("avcodec_send_packet", ret);
         return ret;
     }
 
     if (pkt)
         av_packet_unref(pkt);
 
+    AVFrame* frame = av_frame_alloc();
     while (ret >= 0) {
-        AVFrame frame = {0};
-        ret = avcodec_receive_frame(dec_ctx, &frame);
+        ret = avcodec_receive_frame(dec_ctx, frame);
         if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
             ret = 0;
             break;
         } else if (ret < 0) {
-            $px_lav_throw_msg("avcodec_receive_frame", ret);
-            return ret;
+            LAV_THROW_MSG("avcodec_receive_frame", ret);
+            break;
         }
-        pxc->media_ctx.frames_decoded++;
-        frame.pts = frame.best_effort_timestamp;
+        pxc->media_ctx->frames_decoded++;
+        frame->pts = frame->best_effort_timestamp;
 
-        ret = filter_encode_frame(pxc, &frame);
+        ret = filter_encode_frame(pxc, frame);
         if (ret < 0)
-            return ret;
+            break;
 
-        av_frame_unref(&frame);
+        av_frame_unref(frame);
     }
 
-    return 0;
+    av_frame_free(&frame);
+    return ret;
 }
 
 int px_transcode(PXContext* pxc) {
-
     int ret = 0;
 
+    AVPacket* pkt = av_packet_alloc();
     while (1) {
-        AVPacket pkt = {0};
-        ret = px_read_video_frame(&pxc->media_ctx, &pkt);
+        ret = read_frame(pxc->media_ctx, pkt);
         if (ret == AVERROR(EAGAIN)) {
             continue;
         } else if (ret == AVERROR_EOF) {
@@ -189,48 +223,53 @@ int px_transcode(PXContext* pxc) {
             goto end;
         }
 
-        ret = transcode_packet(pxc, &pkt);
+        ret = transcode_packet(pxc, pkt);
         if (ret < 0)
             goto end;
     }
 
     // flush
-    for (unsigned i = 0; i < pxc->media_ctx.ifmt_ctx->nb_streams; i++) {
-        enum AVMediaType stream_type = pxc->media_ctx.ifmt_ctx->streams[i]->codecpar->codec_type;
+    for (unsigned i = 0; i < pxc->media_ctx->ifmt_ctx->nb_streams; i++) {
+        enum AVMediaType stream_type = pxc->media_ctx->ifmt_ctx->streams[i]->codecpar->codec_type;
         if (stream_type != AVMEDIA_TYPE_VIDEO)
             continue;
 
-        pxc->media_ctx.stream_idx = (int)i;
+        pxc->media_ctx->stream_idx = (int)i;
 
-        if (pxc->media_ctx.coding_ctx_arr[i].dec_ctx->codec->capabilities & AV_CODEC_CAP_DELAY) {
+        if (pxc->media_ctx->coding_ctx_arr[i].dec_ctx->codec->capabilities & AV_CODEC_CAP_DELAY) {
             ret = transcode_packet(pxc, NULL);
             if (ret < 0)
                 goto end;
         }
 
-        if (pxc->media_ctx.coding_ctx_arr[i].enc_ctx->codec->capabilities & AV_CODEC_CAP_DELAY) {
-            ret = filter_encode_frame(pxc, NULL);
-            if (ret < 0)
+        if (pxc->media_ctx->coding_ctx_arr[i].enc_ctx->codec->capabilities & AV_CODEC_CAP_DELAY) {
+            ret = encode_frame(pxc->media_ctx, NULL);
+            if (ret != AVERROR_EOF && ret < 0)
                 goto end;
         }
     }
 
-    ret = av_write_trailer(pxc->media_ctx.ofmt_ctx);
+    ret = av_write_trailer(pxc->media_ctx->ofmt_ctx);
     if (ret < 0)
-        $px_lav_throw_msg("av_write_trailer", ret);
+        LAV_THROW_MSG("av_write_trailer", ret);
 
 end:
     pxc->transc_thread.done = true;
+    av_packet_free(&pkt);
     return ret;
 }
 
-void px_ctx_free(PXContext* pxc) {
+void px_ctx_free(PXContext** pxc) {
+    if (!pxc || !*pxc)
+        return;
+    PXContext* ppxc = *pxc;
 
-    for (int i = 0; i < pxc->fltr_ctx.n_filters; i++) {
-        PXFilter* fltr = &pxc->fltr_ctx.filters[i];
-        fltr->free(fltr);
-    }
+    px_filter_ctx_free(&ppxc->fltr_ctx);
+    px_media_ctx_free(&ppxc->media_ctx);
 
-    px_media_ctx_free(&pxc->media_ctx);
-    px_settings_free(&pxc->settings);
+    px_free(pxc);
+}
+
+const char* px_ffmpeg_version(void) {
+    return av_version_info();
 }

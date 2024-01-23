@@ -1,18 +1,19 @@
-#include "utils.h"
-
+#include <pixie/log.h>
 #include <pixie/util/map.h>
+#include <pixie/util/utils.h>
 
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
 
 int px_map_init(PXMap* map, const PXPair* elems, size_t len) {
-    map->elems = malloc(sizeof(PXPair) * len);
+    map->elems = malloc(sizeof *map->elems * len);
     if (!map->elems) {
-        oom(sizeof(PXPair) * len);
-        return -1;
+        px_oom_msg(sizeof(PXPair) * len);
+        return PXERROR(ENOMEM);
     }
 
-    memcpy(map->elems, elems, sizeof(PXPair) * len);
+    memcpy(map->elems, elems, sizeof *map->elems * len);
     map->len = len;
 
     return 0;
@@ -38,5 +39,18 @@ int px_map_set(PXMap* map, const char* key, const char* value) {
         }
     }
 
-    return -1;
+    return PXERROR(EINVAL);
+}
+
+int px_map_parse(PXMap* map, const char* str) {
+    (void)map, (void)str;
+    PX_LOG(PX_LOG_ERROR, "todo");
+    return PXERROR(ENOSYS);
+}
+
+void px_map_free(PXMap* map) {
+    if (!map)
+        return;
+    px_free(&map->elems);
+    map->len = 0;
 }

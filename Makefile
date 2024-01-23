@@ -27,7 +27,7 @@ app_obj_files := $(app_src_files:%=$(build_dir)/%.o)
 dep_files := $(lib_obj_files:.o=.d) $(app_obj_files:.o=.d)
 
 warns := $(strip -Wall -Wextra -Wpedantic -Wshadow -Wformat=2 -Wconversion \
-	-Wno-gnu-zero-variadic-macro-arguments -Wno-dollar-in-identifier-extension \
+	-Wno-gnu-zero-variadic-macro-arguments \
 	-Wno-cast-function-type -Wno-fixed-enum-extension)
 
 includes := $(strip $(incl_dirs:%=-I%) $(if $(windows), -isystem$(ff_dir)/include))

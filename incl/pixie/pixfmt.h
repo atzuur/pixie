@@ -1,117 +1,123 @@
-#define PX_MAX_PIX_FMT_NAME_LEN 16
+#pragma once
 
-#define $px_make_pix_fmt_tag(color_model, n_planes, comp_type, bits_per_comp, log2_chroma_w, log2_chroma_h) \
-    ((color_model) << 0) | ((comp_type) << 4) | ((n_planes) << 8) | ((bits_per_comp) << 16) |               \
-        ((log2_chroma_w) << 24) | ((log2_chroma_h) << 28)
+#include <pixie/util/utils.h>
 
-typedef enum PXColorModel : int {
+#include <limits.h>
+#include <stdint.h>
 
+#define PX_PIX_FMT_MAX_NAME_LEN 16
+
+#define PX_PIX_FMT_MAKE_TAG(color_model, n_planes, comp_type, bits_per_comp, log2_chroma_w, log2_chroma_h) \
+    (((int64_t)(color_model) << 0) | ((int64_t)(comp_type) << 4) | ((int64_t)(n_planes) << 8) |            \
+     ((int64_t)(bits_per_comp) << 16) | ((int64_t)(log2_chroma_w) << 32) | ((int64_t)(log2_chroma_h) << 40))
+
+typedef enum PXColorModel {
     PX_COLOR_MODEL_YUV,
     PX_COLOR_MODEL_RGB,
     PX_COLOR_MODEL_GRAY,
-
 } PXColorModel;
 
-typedef enum PXComponentType : int {
-
+typedef enum PXComponentType {
     PX_COMP_TYPE_INT,
     PX_COMP_TYPE_FLOAT,
-
 } PXComponentType;
 
-typedef enum PXPixelFormat : int {
-
+typedef enum PXPixelFormat : int64_t {
     PX_PIX_FMT_NONE = 0,
 
     // 3 planes, y+u+v, 4:2:0 subsampling
-    PX_PIX_FMT_YUV420P8 = $px_make_pix_fmt_tag(PX_COLOR_MODEL_YUV, 3, PX_COMP_TYPE_INT, 8, 1, 1),
-    PX_PIX_FMT_YUV420P9 = $px_make_pix_fmt_tag(PX_COLOR_MODEL_YUV, 3, PX_COMP_TYPE_INT, 9, 1, 1),
-    PX_PIX_FMT_YUV420P10 = $px_make_pix_fmt_tag(PX_COLOR_MODEL_YUV, 3, PX_COMP_TYPE_INT, 10, 1, 1),
-    PX_PIX_FMT_YUV420P12 = $px_make_pix_fmt_tag(PX_COLOR_MODEL_YUV, 3, PX_COMP_TYPE_INT, 12, 1, 1),
-    PX_PIX_FMT_YUV420P14 = $px_make_pix_fmt_tag(PX_COLOR_MODEL_YUV, 3, PX_COMP_TYPE_INT, 14, 1, 1),
-    PX_PIX_FMT_YUV420P16 = $px_make_pix_fmt_tag(PX_COLOR_MODEL_YUV, 3, PX_COMP_TYPE_INT, 16, 1, 1),
+    PX_PIX_FMT_YUV420P8 = PX_PIX_FMT_MAKE_TAG(PX_COLOR_MODEL_YUV, 3, PX_COMP_TYPE_INT, 8, 1, 1),
+    PX_PIX_FMT_YUV420P9 = PX_PIX_FMT_MAKE_TAG(PX_COLOR_MODEL_YUV, 3, PX_COMP_TYPE_INT, 9, 1, 1),
+    PX_PIX_FMT_YUV420P10 = PX_PIX_FMT_MAKE_TAG(PX_COLOR_MODEL_YUV, 3, PX_COMP_TYPE_INT, 10, 1, 1),
+    PX_PIX_FMT_YUV420P12 = PX_PIX_FMT_MAKE_TAG(PX_COLOR_MODEL_YUV, 3, PX_COMP_TYPE_INT, 12, 1, 1),
+    PX_PIX_FMT_YUV420P14 = PX_PIX_FMT_MAKE_TAG(PX_COLOR_MODEL_YUV, 3, PX_COMP_TYPE_INT, 14, 1, 1),
+    PX_PIX_FMT_YUV420P16 = PX_PIX_FMT_MAKE_TAG(PX_COLOR_MODEL_YUV, 3, PX_COMP_TYPE_INT, 16, 1, 1),
 
     // 3 planes, y+u+v, 4:2:2 subsampling
-    PX_PIX_FMT_YUV422P8 = $px_make_pix_fmt_tag(PX_COLOR_MODEL_YUV, 3, PX_COMP_TYPE_INT, 8, 1, 0),
-    PX_PIX_FMT_YUV422P9 = $px_make_pix_fmt_tag(PX_COLOR_MODEL_YUV, 3, PX_COMP_TYPE_INT, 9, 1, 0),
-    PX_PIX_FMT_YUV422P10 = $px_make_pix_fmt_tag(PX_COLOR_MODEL_YUV, 3, PX_COMP_TYPE_INT, 10, 1, 0),
-    PX_PIX_FMT_YUV422P12 = $px_make_pix_fmt_tag(PX_COLOR_MODEL_YUV, 3, PX_COMP_TYPE_INT, 12, 1, 0),
-    PX_PIX_FMT_YUV422P14 = $px_make_pix_fmt_tag(PX_COLOR_MODEL_YUV, 3, PX_COMP_TYPE_INT, 14, 1, 0),
-    PX_PIX_FMT_YUV422P16 = $px_make_pix_fmt_tag(PX_COLOR_MODEL_YUV, 3, PX_COMP_TYPE_INT, 16, 1, 0),
+    PX_PIX_FMT_YUV422P8 = PX_PIX_FMT_MAKE_TAG(PX_COLOR_MODEL_YUV, 3, PX_COMP_TYPE_INT, 8, 1, 0),
+    PX_PIX_FMT_YUV422P9 = PX_PIX_FMT_MAKE_TAG(PX_COLOR_MODEL_YUV, 3, PX_COMP_TYPE_INT, 9, 1, 0),
+    PX_PIX_FMT_YUV422P10 = PX_PIX_FMT_MAKE_TAG(PX_COLOR_MODEL_YUV, 3, PX_COMP_TYPE_INT, 10, 1, 0),
+    PX_PIX_FMT_YUV422P12 = PX_PIX_FMT_MAKE_TAG(PX_COLOR_MODEL_YUV, 3, PX_COMP_TYPE_INT, 12, 1, 0),
+    PX_PIX_FMT_YUV422P14 = PX_PIX_FMT_MAKE_TAG(PX_COLOR_MODEL_YUV, 3, PX_COMP_TYPE_INT, 14, 1, 0),
+    PX_PIX_FMT_YUV422P16 = PX_PIX_FMT_MAKE_TAG(PX_COLOR_MODEL_YUV, 3, PX_COMP_TYPE_INT, 16, 1, 0),
 
     // 3 planes, y+u+v, no subsampling
-    PX_PIX_FMT_YUV444P8 = $px_make_pix_fmt_tag(PX_COLOR_MODEL_YUV, 3, PX_COMP_TYPE_INT, 8, 0, 0),
-    PX_PIX_FMT_YUV444P9 = $px_make_pix_fmt_tag(PX_COLOR_MODEL_YUV, 3, PX_COMP_TYPE_INT, 9, 0, 0),
-    PX_PIX_FMT_YUV444P10 = $px_make_pix_fmt_tag(PX_COLOR_MODEL_YUV, 3, PX_COMP_TYPE_INT, 10, 0, 0),
-    PX_PIX_FMT_YUV444P12 = $px_make_pix_fmt_tag(PX_COLOR_MODEL_YUV, 3, PX_COMP_TYPE_INT, 12, 0, 0),
-    PX_PIX_FMT_YUV444P14 = $px_make_pix_fmt_tag(PX_COLOR_MODEL_YUV, 3, PX_COMP_TYPE_INT, 14, 0, 0),
-    PX_PIX_FMT_YUV444P16 = $px_make_pix_fmt_tag(PX_COLOR_MODEL_YUV, 3, PX_COMP_TYPE_INT, 16, 0, 0),
+    PX_PIX_FMT_YUV444P8 = PX_PIX_FMT_MAKE_TAG(PX_COLOR_MODEL_YUV, 3, PX_COMP_TYPE_INT, 8, 0, 0),
+    PX_PIX_FMT_YUV444P9 = PX_PIX_FMT_MAKE_TAG(PX_COLOR_MODEL_YUV, 3, PX_COMP_TYPE_INT, 9, 0, 0),
+    PX_PIX_FMT_YUV444P10 = PX_PIX_FMT_MAKE_TAG(PX_COLOR_MODEL_YUV, 3, PX_COMP_TYPE_INT, 10, 0, 0),
+    PX_PIX_FMT_YUV444P12 = PX_PIX_FMT_MAKE_TAG(PX_COLOR_MODEL_YUV, 3, PX_COMP_TYPE_INT, 12, 0, 0),
+    PX_PIX_FMT_YUV444P14 = PX_PIX_FMT_MAKE_TAG(PX_COLOR_MODEL_YUV, 3, PX_COMP_TYPE_INT, 14, 0, 0),
+    PX_PIX_FMT_YUV444P16 = PX_PIX_FMT_MAKE_TAG(PX_COLOR_MODEL_YUV, 3, PX_COMP_TYPE_INT, 16, 0, 0),
 
     // 3 planes, y+u+v, 4:1:0 subsampling
-    PX_PIX_FMT_YUV410P8 = $px_make_pix_fmt_tag(PX_COLOR_MODEL_YUV, 3, PX_COMP_TYPE_INT, 8, 2, 2),
+    PX_PIX_FMT_YUV410P8 = PX_PIX_FMT_MAKE_TAG(PX_COLOR_MODEL_YUV, 3, PX_COMP_TYPE_INT, 8, 2, 2),
 
     // 3 planes, y+u+v, 4:1:1 subsampling
-    PX_PIX_FMT_YUV411P8 = $px_make_pix_fmt_tag(PX_COLOR_MODEL_YUV, 3, PX_COMP_TYPE_INT, 8, 2, 0),
+    PX_PIX_FMT_YUV411P8 = PX_PIX_FMT_MAKE_TAG(PX_COLOR_MODEL_YUV, 3, PX_COMP_TYPE_INT, 8, 2, 0),
 
     // 3 planes, y+u+v, 4:4:0 subsampling
-    PX_PIX_FMT_YUV440P8 = $px_make_pix_fmt_tag(PX_COLOR_MODEL_YUV, 3, PX_COMP_TYPE_INT, 8, 0, 1),
-    PX_PIX_FMT_YUV440P10 = $px_make_pix_fmt_tag(PX_COLOR_MODEL_YUV, 3, PX_COMP_TYPE_INT, 10, 0, 1),
-    PX_PIX_FMT_YUV440P12 = $px_make_pix_fmt_tag(PX_COLOR_MODEL_YUV, 3, PX_COMP_TYPE_INT, 12, 0, 1),
+    PX_PIX_FMT_YUV440P8 = PX_PIX_FMT_MAKE_TAG(PX_COLOR_MODEL_YUV, 3, PX_COMP_TYPE_INT, 8, 0, 1),
+    PX_PIX_FMT_YUV440P10 = PX_PIX_FMT_MAKE_TAG(PX_COLOR_MODEL_YUV, 3, PX_COMP_TYPE_INT, 10, 0, 1),
+    PX_PIX_FMT_YUV440P12 = PX_PIX_FMT_MAKE_TAG(PX_COLOR_MODEL_YUV, 3, PX_COMP_TYPE_INT, 12, 0, 1),
+    PX_PIX_FMT_YUV440P14 = PX_PIX_FMT_MAKE_TAG(PX_COLOR_MODEL_YUV, 3, PX_COMP_TYPE_INT, 14, 0, 1),
+    PX_PIX_FMT_YUV440P16 = PX_PIX_FMT_MAKE_TAG(PX_COLOR_MODEL_YUV, 3, PX_COMP_TYPE_INT, 16, 0, 1),
 
     // 4 planes, y+u+v+a, 4:2:0 subsampling
-    PX_PIX_FMT_YUVA420P8 = $px_make_pix_fmt_tag(PX_COLOR_MODEL_YUV, 4, PX_COMP_TYPE_INT, 8, 1, 1),
-    PX_PIX_FMT_YUVA420P9 = $px_make_pix_fmt_tag(PX_COLOR_MODEL_YUV, 4, PX_COMP_TYPE_INT, 9, 1, 1),
-    PX_PIX_FMT_YUVA420P10 = $px_make_pix_fmt_tag(PX_COLOR_MODEL_YUV, 4, PX_COMP_TYPE_INT, 10, 1, 1),
-    PX_PIX_FMT_YUVA420P16 = $px_make_pix_fmt_tag(PX_COLOR_MODEL_YUV, 4, PX_COMP_TYPE_INT, 16, 1, 1),
+    PX_PIX_FMT_YUVA420P8 = PX_PIX_FMT_MAKE_TAG(PX_COLOR_MODEL_YUV, 4, PX_COMP_TYPE_INT, 8, 1, 1),
+    PX_PIX_FMT_YUVA420P9 = PX_PIX_FMT_MAKE_TAG(PX_COLOR_MODEL_YUV, 4, PX_COMP_TYPE_INT, 9, 1, 1),
+    PX_PIX_FMT_YUVA420P10 = PX_PIX_FMT_MAKE_TAG(PX_COLOR_MODEL_YUV, 4, PX_COMP_TYPE_INT, 10, 1, 1),
+    PX_PIX_FMT_YUVA420P12 = PX_PIX_FMT_MAKE_TAG(PX_COLOR_MODEL_YUV, 4, PX_COMP_TYPE_INT, 12, 1, 1),
+    PX_PIX_FMT_YUVA420P14 = PX_PIX_FMT_MAKE_TAG(PX_COLOR_MODEL_YUV, 4, PX_COMP_TYPE_INT, 14, 1, 1),
+    PX_PIX_FMT_YUVA420P16 = PX_PIX_FMT_MAKE_TAG(PX_COLOR_MODEL_YUV, 4, PX_COMP_TYPE_INT, 16, 1, 1),
 
     // 4 planes, y+u+v+a, 4:2:2 subsampling
-    PX_PIX_FMT_YUVA422P8 = $px_make_pix_fmt_tag(PX_COLOR_MODEL_YUV, 4, PX_COMP_TYPE_INT, 8, 1, 0),
-    PX_PIX_FMT_YUVA422P9 = $px_make_pix_fmt_tag(PX_COLOR_MODEL_YUV, 4, PX_COMP_TYPE_INT, 9, 1, 0),
-    PX_PIX_FMT_YUVA422P10 = $px_make_pix_fmt_tag(PX_COLOR_MODEL_YUV, 4, PX_COMP_TYPE_INT, 10, 1, 0),
-    PX_PIX_FMT_YUVA422P12 = $px_make_pix_fmt_tag(PX_COLOR_MODEL_YUV, 4, PX_COMP_TYPE_INT, 12, 1, 0),
-    PX_PIX_FMT_YUVA422P16 = $px_make_pix_fmt_tag(PX_COLOR_MODEL_YUV, 4, PX_COMP_TYPE_INT, 16, 1, 0),
+    PX_PIX_FMT_YUVA422P8 = PX_PIX_FMT_MAKE_TAG(PX_COLOR_MODEL_YUV, 4, PX_COMP_TYPE_INT, 8, 1, 0),
+    PX_PIX_FMT_YUVA422P9 = PX_PIX_FMT_MAKE_TAG(PX_COLOR_MODEL_YUV, 4, PX_COMP_TYPE_INT, 9, 1, 0),
+    PX_PIX_FMT_YUVA422P10 = PX_PIX_FMT_MAKE_TAG(PX_COLOR_MODEL_YUV, 4, PX_COMP_TYPE_INT, 10, 1, 0),
+    PX_PIX_FMT_YUVA422P12 = PX_PIX_FMT_MAKE_TAG(PX_COLOR_MODEL_YUV, 4, PX_COMP_TYPE_INT, 12, 1, 0),
+    PX_PIX_FMT_YUVA422P14 = PX_PIX_FMT_MAKE_TAG(PX_COLOR_MODEL_YUV, 4, PX_COMP_TYPE_INT, 14, 1, 0),
+    PX_PIX_FMT_YUVA422P16 = PX_PIX_FMT_MAKE_TAG(PX_COLOR_MODEL_YUV, 4, PX_COMP_TYPE_INT, 16, 1, 0),
 
     // 4 planes, y+u+v+a, no subsampling
-    PX_PIX_FMT_YUVA444P8 = $px_make_pix_fmt_tag(PX_COLOR_MODEL_YUV, 4, PX_COMP_TYPE_INT, 8, 0, 0),
-    PX_PIX_FMT_YUVA444P9 = $px_make_pix_fmt_tag(PX_COLOR_MODEL_YUV, 4, PX_COMP_TYPE_INT, 9, 0, 0),
-    PX_PIX_FMT_YUVA444P10 = $px_make_pix_fmt_tag(PX_COLOR_MODEL_YUV, 4, PX_COMP_TYPE_INT, 10, 0, 0),
-    PX_PIX_FMT_YUVA444P12 = $px_make_pix_fmt_tag(PX_COLOR_MODEL_YUV, 4, PX_COMP_TYPE_INT, 12, 0, 0),
-    PX_PIX_FMT_YUVA444P16 = $px_make_pix_fmt_tag(PX_COLOR_MODEL_YUV, 4, PX_COMP_TYPE_INT, 16, 0, 0),
+    PX_PIX_FMT_YUVA444P8 = PX_PIX_FMT_MAKE_TAG(PX_COLOR_MODEL_YUV, 4, PX_COMP_TYPE_INT, 8, 0, 0),
+    PX_PIX_FMT_YUVA444P9 = PX_PIX_FMT_MAKE_TAG(PX_COLOR_MODEL_YUV, 4, PX_COMP_TYPE_INT, 9, 0, 0),
+    PX_PIX_FMT_YUVA444P10 = PX_PIX_FMT_MAKE_TAG(PX_COLOR_MODEL_YUV, 4, PX_COMP_TYPE_INT, 10, 0, 0),
+    PX_PIX_FMT_YUVA444P12 = PX_PIX_FMT_MAKE_TAG(PX_COLOR_MODEL_YUV, 4, PX_COMP_TYPE_INT, 12, 0, 0),
+    PX_PIX_FMT_YUVA444P14 = PX_PIX_FMT_MAKE_TAG(PX_COLOR_MODEL_YUV, 4, PX_COMP_TYPE_INT, 14, 0, 0),
+    PX_PIX_FMT_YUVA444P16 = PX_PIX_FMT_MAKE_TAG(PX_COLOR_MODEL_YUV, 4, PX_COMP_TYPE_INT, 16, 0, 0),
 
     // 1 plane, gray (luma only)
-    PX_PIX_FMT_Y8 = $px_make_pix_fmt_tag(PX_COLOR_MODEL_GRAY, 1, PX_COMP_TYPE_INT, 8, 0, 0),
-    PX_PIX_FMT_Y9 = $px_make_pix_fmt_tag(PX_COLOR_MODEL_GRAY, 1, PX_COMP_TYPE_INT, 9, 0, 0),
-    PX_PIX_FMT_Y10 = $px_make_pix_fmt_tag(PX_COLOR_MODEL_GRAY, 1, PX_COMP_TYPE_INT, 10, 0, 0),
-    PX_PIX_FMT_Y12 = $px_make_pix_fmt_tag(PX_COLOR_MODEL_GRAY, 1, PX_COMP_TYPE_INT, 12, 0, 0),
-    PX_PIX_FMT_Y14 = $px_make_pix_fmt_tag(PX_COLOR_MODEL_GRAY, 1, PX_COMP_TYPE_INT, 14, 0, 0),
-    PX_PIX_FMT_Y16 = $px_make_pix_fmt_tag(PX_COLOR_MODEL_GRAY, 1, PX_COMP_TYPE_INT, 16, 0, 0),
-    PX_PIX_FMT_YF32 = $px_make_pix_fmt_tag(PX_COLOR_MODEL_GRAY, 1, PX_COMP_TYPE_FLOAT, 32, 0, 0),
+    PX_PIX_FMT_Y8 = PX_PIX_FMT_MAKE_TAG(PX_COLOR_MODEL_GRAY, 1, PX_COMP_TYPE_INT, 8, 0, 0),
+    PX_PIX_FMT_Y9 = PX_PIX_FMT_MAKE_TAG(PX_COLOR_MODEL_GRAY, 1, PX_COMP_TYPE_INT, 9, 0, 0),
+    PX_PIX_FMT_Y10 = PX_PIX_FMT_MAKE_TAG(PX_COLOR_MODEL_GRAY, 1, PX_COMP_TYPE_INT, 10, 0, 0),
+    PX_PIX_FMT_Y12 = PX_PIX_FMT_MAKE_TAG(PX_COLOR_MODEL_GRAY, 1, PX_COMP_TYPE_INT, 12, 0, 0),
+    PX_PIX_FMT_Y14 = PX_PIX_FMT_MAKE_TAG(PX_COLOR_MODEL_GRAY, 1, PX_COMP_TYPE_INT, 14, 0, 0),
+    PX_PIX_FMT_Y16 = PX_PIX_FMT_MAKE_TAG(PX_COLOR_MODEL_GRAY, 1, PX_COMP_TYPE_INT, 16, 0, 0),
+    PX_PIX_FMT_YF32 = PX_PIX_FMT_MAKE_TAG(PX_COLOR_MODEL_GRAY, 1, PX_COMP_TYPE_FLOAT, 32, 0, 0),
 
     // 2 planes, gray+alpha (luma+alpha)
-    PX_PIX_FMT_YA8 = $px_make_pix_fmt_tag(PX_COLOR_MODEL_GRAY, 2, PX_COMP_TYPE_INT, 8, 0, 0),
-    PX_PIX_FMT_YA16 = $px_make_pix_fmt_tag(PX_COLOR_MODEL_GRAY, 2, PX_COMP_TYPE_INT, 16, 0, 0),
+    PX_PIX_FMT_YA8 = PX_PIX_FMT_MAKE_TAG(PX_COLOR_MODEL_GRAY, 2, PX_COMP_TYPE_INT, 8, 0, 0),
+    PX_PIX_FMT_YA16 = PX_PIX_FMT_MAKE_TAG(PX_COLOR_MODEL_GRAY, 2, PX_COMP_TYPE_INT, 16, 0, 0),
 
-    // 3 planes, r+g+b
-    PX_PIX_FMT_RGBP8 = $px_make_pix_fmt_tag(PX_COLOR_MODEL_RGB, 3, PX_COMP_TYPE_INT, 8, 0, 0),
-    PX_PIX_FMT_RGBP9 = $px_make_pix_fmt_tag(PX_COLOR_MODEL_RGB, 3, PX_COMP_TYPE_INT, 9, 0, 0),
-    PX_PIX_FMT_RGBP10 = $px_make_pix_fmt_tag(PX_COLOR_MODEL_RGB, 3, PX_COMP_TYPE_INT, 10, 0, 0),
-    PX_PIX_FMT_RGBP12 = $px_make_pix_fmt_tag(PX_COLOR_MODEL_RGB, 3, PX_COMP_TYPE_INT, 12, 0, 0),
-    PX_PIX_FMT_RGBP14 = $px_make_pix_fmt_tag(PX_COLOR_MODEL_RGB, 3, PX_COMP_TYPE_INT, 14, 0, 0),
-    PX_PIX_FMT_RGBP16 = $px_make_pix_fmt_tag(PX_COLOR_MODEL_RGB, 3, PX_COMP_TYPE_INT, 16, 0, 0),
-    PX_PIX_FMT_RGBPF32 = $px_make_pix_fmt_tag(PX_COLOR_MODEL_RGB, 3, PX_COMP_TYPE_FLOAT, 32, 0, 0),
+    // 3 planes, g+b+r
+    PX_PIX_FMT_GBRP8 = PX_PIX_FMT_MAKE_TAG(PX_COLOR_MODEL_RGB, 3, PX_COMP_TYPE_INT, 8, 0, 0),
+    PX_PIX_FMT_GBRP9 = PX_PIX_FMT_MAKE_TAG(PX_COLOR_MODEL_RGB, 3, PX_COMP_TYPE_INT, 9, 0, 0),
+    PX_PIX_FMT_GBRP10 = PX_PIX_FMT_MAKE_TAG(PX_COLOR_MODEL_RGB, 3, PX_COMP_TYPE_INT, 10, 0, 0),
+    PX_PIX_FMT_GBRP12 = PX_PIX_FMT_MAKE_TAG(PX_COLOR_MODEL_RGB, 3, PX_COMP_TYPE_INT, 12, 0, 0),
+    PX_PIX_FMT_GBRP14 = PX_PIX_FMT_MAKE_TAG(PX_COLOR_MODEL_RGB, 3, PX_COMP_TYPE_INT, 14, 0, 0),
+    PX_PIX_FMT_GBRP16 = PX_PIX_FMT_MAKE_TAG(PX_COLOR_MODEL_RGB, 3, PX_COMP_TYPE_INT, 16, 0, 0),
+    PX_PIX_FMT_GBRPF32 = PX_PIX_FMT_MAKE_TAG(PX_COLOR_MODEL_RGB, 3, PX_COMP_TYPE_FLOAT, 32, 0, 0),
 
-    // 4 planes, r+g+b+a
-    PX_PIX_FMT_RGBAP8 = $px_make_pix_fmt_tag(PX_COLOR_MODEL_RGB, 4, PX_COMP_TYPE_INT, 8, 0, 0),
-    PX_PIX_FMT_RGBAP10 = $px_make_pix_fmt_tag(PX_COLOR_MODEL_RGB, 4, PX_COMP_TYPE_INT, 10, 0, 0),
-    PX_PIX_FMT_RGBAP12 = $px_make_pix_fmt_tag(PX_COLOR_MODEL_RGB, 4, PX_COMP_TYPE_INT, 12, 0, 0),
-    PX_PIX_FMT_RGBAP14 = $px_make_pix_fmt_tag(PX_COLOR_MODEL_RGB, 4, PX_COMP_TYPE_INT, 14, 0, 0),
-    PX_PIX_FMT_RGBAP16 = $px_make_pix_fmt_tag(PX_COLOR_MODEL_RGB, 4, PX_COMP_TYPE_INT, 16, 0, 0),
-    PX_PIX_FMT_RGBAPF32 = $px_make_pix_fmt_tag(PX_COLOR_MODEL_RGB, 4, PX_COMP_TYPE_FLOAT, 32, 0, 0),
-
+    // 4 planes, g+b+r+a
+    PX_PIX_FMT_GBRAP8 = PX_PIX_FMT_MAKE_TAG(PX_COLOR_MODEL_RGB, 4, PX_COMP_TYPE_INT, 8, 0, 0),
+    PX_PIX_FMT_GBRAP10 = PX_PIX_FMT_MAKE_TAG(PX_COLOR_MODEL_RGB, 4, PX_COMP_TYPE_INT, 10, 0, 0),
+    PX_PIX_FMT_GBRAP12 = PX_PIX_FMT_MAKE_TAG(PX_COLOR_MODEL_RGB, 4, PX_COMP_TYPE_INT, 12, 0, 0),
+    PX_PIX_FMT_GBRAP14 = PX_PIX_FMT_MAKE_TAG(PX_COLOR_MODEL_RGB, 4, PX_COMP_TYPE_INT, 14, 0, 0),
+    PX_PIX_FMT_GBRAP16 = PX_PIX_FMT_MAKE_TAG(PX_COLOR_MODEL_RGB, 4, PX_COMP_TYPE_INT, 16, 0, 0),
+    PX_PIX_FMT_GBRAPF32 = PX_PIX_FMT_MAKE_TAG(PX_COLOR_MODEL_RGB, 4, PX_COMP_TYPE_FLOAT, 32, 0, 0),
 } PXPixelFormat;
 
 typedef struct PXPixFmtDescriptor {
-
     PXColorModel color_model;
     PXComponentType comp_type;
 
@@ -123,8 +129,18 @@ typedef struct PXPixFmtDescriptor {
     // `chroma_width = width >> log2_chroma[0]`
     // `chroma_height = height >> log2_chroma[1]`
     int log2_chroma[2];
-
 } PXPixFmtDescriptor;
 
-void px_pix_fmt_get_desc(PXPixFmtDescriptor* dest, PXPixelFormat pix_fmt);
-void px_pix_fmt_get_name(char dest[static PX_MAX_PIX_FMT_NAME_LEN], PXPixelFormat pix_fmt);
+static inline PXPixFmtDescriptor px_pix_fmt_get_desc(PXPixelFormat pix_fmt) {
+    return (PXPixFmtDescriptor) {
+        .color_model = (pix_fmt >> 0) & 0xF,
+        .comp_type = (pix_fmt >> 4) & 0xF,
+        .n_planes = (pix_fmt >> 8) & 0xFF,
+        .bits_per_comp = (pix_fmt >> 16) & 0xFFFF,
+        .bytes_per_comp = px_ceil_div((pix_fmt >> 16) & 0xFFFF, CHAR_BIT),
+        .log2_chroma[0] = (pix_fmt >> 32) & 0xFF,
+        .log2_chroma[1] = (pix_fmt >> 40) & 0xFF,
+    };
+}
+
+void px_pix_fmt_get_name(char dest[static PX_PIX_FMT_MAX_NAME_LEN], PXPixelFormat pix_fmt);

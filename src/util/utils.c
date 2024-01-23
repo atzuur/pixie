@@ -1,32 +1,30 @@
-#include "utils.h"
+#include <pixie/util/utils.h>
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-void oom(size_t alloc_size) {
+void px_oom_msg(size_t alloc_size) {
     fprintf(stderr, "Memory allocation of %zu bytes failed\n", alloc_size);
 }
 
-char* get_basename(const char* path) {
-    return strrchr(path, *PATH_SEP);
+char* px_get_basename(const char* path) {
+    return strrchr(path, *PX_PATH_SEP);
 }
 
-int ceil_div(int a, int b) {
+int px_ceil_div(int a, int b) {
     return 1 + (a - 1) / b;
 }
 
-void free_s(void* ptr) {
-
+void px_free(void* ptr) {
     void** p = (void**)ptr;
-
     if (*p) {
         free(*p);
         *p = NULL;
     }
 }
 
-bool file_exists(const char* path) {
+bool px_file_exists(const char* path) {
     return access(path, F_OK) == 0;
 }
 
@@ -38,25 +36,25 @@ bool file_exists(const char* path) {
 
 int nanosleep(const struct timespec* req, struct timespec* rem);
 
-int get_available_threads(void) {
+int px_get_available_threads(void) {
     int ret = (int)sysconf(_SC_NPROCESSORS_ONLN);
     return ret < 1 ? 1 : ret;
 }
 
-char* last_errstr(char* dest, int err) {
+char* px_last_os_errstr(char* dest, int err) {
     int errcode = err ? err : errno;
     strncpy(dest, strerror(errcode), 256);
     return dest;
 }
 
-int create_folder(const char* path) {
+int px_create_folder(const char* path) {
     int ret = mkdir(path, 0777);
     if (ret < 0)
         return errno != EEXIST;
     return 1;
 }
 
-void sleep_ms(int ms) {
+void px_sleep_ms(int ms) {
     struct timespec ts;
 
     ts.tv_sec = 0;
@@ -67,26 +65,26 @@ void sleep_ms(int ms) {
 
 #elif defined(_WIN32)
 
-int get_available_threads(void) {
+int px_get_available_threads(void) {
     SYSTEM_INFO info;
     GetSystemInfo(&info);
-    return info.dwNumberOfProcessors;
+    return (int)info.dwNumberOfProcessors;
 }
 
-char* last_errstr(char* dest, int err) {
-    int errcode = err ? err : (int)GetLastError();
+char* px_last_os_errstr(char* dest, int err) {
+    DWORD errcode = err ? (DWORD)err : GetLastError();
     FormatMessage(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, NULL, errcode,
                   MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), dest, 256, NULL);
     return dest;
 }
 
-int create_folder(const char* path) {
+int px_create_folder(const char* path) {
     if (!CreateDirectoryA(path, 0))
         return GetLastError() != ERROR_ALREADY_EXISTS;
     return 1;
 }
 
-void sleep_ms(int ms) {
-    Sleep(ms);
+void px_sleep_ms(int ms) {
+    Sleep((DWORD)ms);
 }
 #endif

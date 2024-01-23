@@ -1,9 +1,32 @@
-#include "utils.h"
+#include "../internals.h"
 
+#include <pixie/util/utils.h>
 #include <pixie/util/thread.h>
 
 #include <stdint.h>
 #include <string.h>
+
+#ifdef C11_THREADS
+static inline const char* c11_thrd_strerror(int err) {
+    switch (err) {
+        case thrd_success:
+            return strerror(0);
+        case thrd_nomem:
+            return strerror(ENOMEM);
+        case thrd_timedout:
+            return strerror(ETIMEDOUT);
+        case thrd_busy:
+            return strerror(EBUSY);
+        case thrd_error: // fallthrough
+        default:
+            return "Unspecified thread error";
+    }
+}
+
+#define CTHRD_THROW_MSG(func, err)                                                    \
+    fprintf(stderr, "%s() failed at %s:%d: %s (code %d)\n", func, __FILE__, __LINE__, \
+            c11_thrd_strerror(err), err)
+#endif
 
 int px_thrd_launch(PXThread* thread) {
     assert(thread->func);
@@ -11,13 +34,13 @@ int px_thrd_launch(PXThread* thread) {
 #ifdef C11_THREADS
     int res = thrd_create(&thread->thrd, thread->func, thread->args);
     if (res != thrd_success)
-        $c11_thrd_throw_msg("thrd_create", res);
+        CTHRD_THROW_MSG("thrd_create", res);
     return res;
 #endif
 #ifdef WIN32_THREADS
     thread->thrd = CreateThread(0, 0, (LPTHREAD_START_ROUTINE)thread->func, thread->args, 0, 0);
     if (!thread->thrd) {
-        $throw_msg("CreateThread", $last_errcode());
+        OS_THROW_MSG("CreateThread", 0);
         return 1;
     }
     return 0;
@@ -26,7 +49,7 @@ int px_thrd_launch(PXThread* thread) {
     typedef void* (*pthread_func)(void*);
     int res = pthread_create(&thread->thrd, 0, (pthread_func)thread->func, thread->args);
     if (res != 0)
-        $throw_msg("pthread_create", res);
+        OS_THROW_MSG("pthread_create", res);
     return res;
 #endif
 }
@@ -37,27 +60,27 @@ int px_thrd_join(PXThread* thread, int* return_code) {
 #ifdef C11_THREADS
     int res = thrd_join(thread->thrd, return_code);
     if (res != thrd_success) {
-        $c11_thrd_throw_msg("thrd_join", res);
+        CTHRD_THROW_MSG("thrd_join", res);
         goto end;
     }
 #endif
 #ifdef WIN32_THREADS
     DWORD res = WaitForSingleObject(thread->thrd, INFINITE);
     if (res != WAIT_OBJECT_0) {
-        $throw_msg("WaitForSingleObject", $last_errcode());
+        OS_THROW_MSG("WaitForSingleObject", 0);
         goto end;
     }
 
     DWORD ret;
     res = (DWORD)GetExitCodeThread(thread->thrd, &ret);
     if (!res) {
-        $throw_msg("GetExitCodeThread", $last_errcode());
+        OS_THROW_MSG("GetExitCodeThread", 0);
         goto end;
     }
 
     res = (DWORD)CloseHandle(thread->thrd);
     if (!res) {
-        $throw_msg("CloseHandle", $last_errcode());
+        OS_THROW_MSG("CloseHandle", 0);
         goto end;
     }
 
@@ -67,7 +90,7 @@ int px_thrd_join(PXThread* thread, int* return_code) {
     void* ret;
     int res = pthread_join(thread->thrd, &ret);
     if (res != 0) {
-        $throw_msg("pthread_join", res);
+        OS_THROW_MSG("pthread_join", res);
         goto end;
     }
 
@@ -76,7 +99,7 @@ int px_thrd_join(PXThread* thread, int* return_code) {
 
 end:
     memset(&thread->thrd, 0, sizeof thread->thrd);
-    return res;
+    return (int)res;
 }
 
 void px_thrd_exit(int ret) {
@@ -84,7 +107,7 @@ void px_thrd_exit(int ret) {
     thrd_exit(ret);
 #endif
 #ifdef WIN32_THREADS
-    ExitThread(ret);
+    ExitThread((DWORD)ret);
 #endif
 #ifdef POSIX_THREADS
     pthread_exit((void*)(intptr_t)ret);

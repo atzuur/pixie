@@ -4,7 +4,6 @@
 #include <stdlib.h>
 
 AtoiResult checked_atoi(const char* str) {
-
     AtoiResult ret = {0};
 
     char* end;
@@ -20,7 +19,6 @@ AtoiResult checked_atoi(const char* str) {
 }
 
 AtofResult checked_atof(const char* str) {
-
     AtofResult ret = {0};
 
     char* end;

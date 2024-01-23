@@ -1,16 +1,16 @@
 #include "cli.h"
 
-#include <limits.h>
 #include <pixie/log.h>
 #include <pixie/util/strconv.h>
 
+#include <limits.h>
 #include <ctype.h>
+#include <errno.h>
 
 void px_print_info(const char* prog_name, bool full) {
-
     printf("pixie v%s, using FFmpeg version %s\n"
            "Usage: %s -i <input file(s)> [options] -o <output file/folder>\n",
-           PX_VERSION, av_version_info(), prog_name);
+           PX_VERSION, px_ffmpeg_version(), prog_name);
 
     if (full)
         puts(
@@ -23,7 +23,6 @@ void px_print_info(const char* prog_name, bool full) {
 }
 
 static inline bool opt_matches(const char* opt, const char* long_opt, const char* short_opt) {
-
     if (strcmp(opt, long_opt) == 0)
         return true;
 
@@ -46,7 +45,7 @@ static inline bool is_opt(const char* str) {
         return false;
 
     for (size_t i = 0; i < len; i++) {
-        if (isspace(*str))
+        if (isspace(str[i]))
             return false;
     }
 
@@ -58,16 +57,12 @@ static inline bool is_value(const char* str) {
 }
 
 static inline int missing_value(const char* opt) {
-    $px_log(PX_LOG_ERROR, "Missing value for option \"%s\"\n", opt);
-    return 1;
+    PX_LOG(PX_LOG_ERROR, "Missing value for option \"%s\"\n", opt);
+    return PXERROR(EINVAL);
 }
 
 int px_parse_args(int argc, char** argv, PXSettings* s) {
-
-    int ret = 0;
-
-    *s = (PXSettings) {.loglevel = PX_LOG_NONE};
-
+    s->loglevel = PX_LOG_NONE;
     argv++, argc--; // skip program name
 
     if (argc < 1) {
@@ -76,10 +71,9 @@ int px_parse_args(int argc, char** argv, PXSettings* s) {
     }
 
     for (int i = 0; i < argc; i++) {
-
         const char* opt = argv[i];
         if (!is_opt(opt)) {
-            $px_log(PX_LOG_WARN, "Ignoring argument \"%s\"\n", opt);
+            PX_LOG(PX_LOG_WARN, "Ignoring argument \"%s\"\n", opt);
             continue;
         }
 
@@ -89,7 +83,6 @@ int px_parse_args(int argc, char** argv, PXSettings* s) {
         }
 
         if (opt_matches(opt, "--input", "-i")) {
-
             s->input_files = &argv[++i];
             if (!is_value(s->input_files[0]))
                 return missing_value(opt);
@@ -101,12 +94,10 @@ int px_parse_args(int argc, char** argv, PXSettings* s) {
                 s->n_input_files++;
                 i++;
             }
-
             continue;
         }
 
         if (opt_matches(opt, "--output", "-o")) {
-
             // folder check done later
             s->output_file = strdup(argv[++i]);
             if (!is_value(s->output_file))
@@ -116,32 +107,20 @@ int px_parse_args(int argc, char** argv, PXSettings* s) {
         }
 
         if (opt_matches(opt, "--video-enc", "-v")) {
-
             s->enc_name_v = argv[++i];
             if (!is_value(s->enc_name_v))
                 return missing_value(opt);
 
-            const char* settings = strchr(s->enc_name_v, ',');
+            char* settings = strchr(s->enc_name_v, ',');
             if (!settings)
                 continue;
 
-            settings++; // skip comma
-
-            ptrdiff_t comma_offset = settings - s->enc_name_v - 1;
-            s->enc_name_v[comma_offset] = '\0';
-
-            ret = av_dict_parse_string(&s->enc_opts_v, settings, "=", ":", 0);
-            if (ret < 0) {
-                $px_log(PX_LOG_ERROR, "Failed to parse video encoder settings \"%s\": %s (%d)\n", settings,
-                        av_err2str(ret), ret);
-                return ret;
-            }
-
+            *settings = '\0';
+            s->enc_opts_v = ++settings;
             continue;
         }
 
         if (opt_matches(opt, "--log-level", "-l")) {
-
             const char* value = argv[++i];
             if (!is_value(value))
                 return missing_value(opt);
@@ -152,16 +131,15 @@ int px_parse_args(int argc, char** argv, PXSettings* s) {
             else
                 s->loglevel = px_loglevel_from_str(value);
 
-            if (s->loglevel <= PX_LOG_NONE || s->loglevel >= PX_LOG_COUNT) {
-                $px_log(PX_LOG_ERROR, "Invalid log level: \"%s\"\n", value);
-                return 1;
+            if (s->loglevel <= PX_LOG_NONE || s->loglevel >= px_log_num_levels()) {
+                PX_LOG(PX_LOG_ERROR, "Invalid log level: \"%s\"\n", value);
+                return PXERROR(EINVAL);
             }
-
             continue;
         }
 
-        $px_log(PX_LOG_WARN, "Ignoring unknown option \"%s\"\n", opt);
+        PX_LOG(PX_LOG_WARN, "Ignoring unknown option \"%s\"\n", opt);
     }
 
-    return ret;
+    return 0;
 }
