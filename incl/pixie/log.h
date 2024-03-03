@@ -32,5 +32,4 @@ void px_log_set_level(PXLogLevel level);
 // abi-safe way to get PX_LOG_COUNT
 int px_log_num_levels(void);
 
-#define PX_LOG(level, msg, ...) px_log_msg(level, "%s(): " msg, __func__ __VA_OPT__(, ) __VA_ARGS__)
-void px_log_msg(PXLogLevel level, const char* msg, ...);
+void px_log(PXLogLevel level, const char* msg, ...);

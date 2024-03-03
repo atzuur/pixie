@@ -3,18 +3,21 @@
 
 #pragma once
 
-#include <stdbool.h>
+#include <pixie/util/platform.h>
 
-#ifdef _WIN32
-#define WIN32_THREADS
+#include <stdbool.h>
+#include <stdatomic.h>
+
+#ifdef PX_PLATFORM_WINDOWS
+#define PX_THREADS_WIN32
 #include <windows.h>
 
-#elif defined(__unix__) || (defined(__APPLE__) && defined(__MACH__))
-#define POSIX_THREADS
+#elif defined(PX_PLATFORM_UNIX)
+#define PX_THREADS_POSIX
 #include <pthread.h>
 
 #elif __STDC_VERSION__ >= 201112L && !defined(__STDC_NO_THREADS__)
-#define C11_THREADS
+#define PX_THREADS_C11
 #include <stdio.h>
 #include <threads.h>
 #include <errno.h>
@@ -29,13 +32,13 @@ typedef struct PXThread {
     PXThreadFunc func;
     void* args;
 
-    bool done;
+    atomic_bool done;
 
-#ifdef C11_THREADS
+#ifdef PX_THREADS_C11
     thrd_t thrd;
-#elif defined(WIN32_THREADS)
+#elif defined(PX_THREADS_WIN32)
     HANDLE thrd;
-#elif defined(POSIX_THREADS)
+#elif defined(PX_THREADS_POSIX)
     pthread_t thrd;
 #endif
 

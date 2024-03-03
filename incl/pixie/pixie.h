@@ -7,7 +7,7 @@
 
 #include <stdbool.h>
 
-#define PX_VERSION "0.1.1"
+#define PX_VERSION "0.3.0"
 
 typedef struct PXContext {
     PXMediaContext* media_ctx;

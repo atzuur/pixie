@@ -1,5 +1,7 @@
 #pragma once
 
+#include <pixie/util/platform.h>
+
 #include <assert.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -7,7 +9,7 @@
 // same as ffmpeg's AVERROR(x) for consistency
 #define PXERROR(x) (-(x))
 
-#if defined(__unix__) || (defined(__APPLE__) && defined(__MACH__))
+#ifdef PX_PLATFORM_UNIX
 
 #include <errno.h>
 #include <unistd.h>
@@ -15,9 +17,7 @@
 #define PX_PATH_SEP "/"
 #define PX_LAST_OS_ERR() errno
 
-#define aligned_free(ptr) free(ptr)
-
-#elif defined(_WIN32)
+#elif defined(PX_PLATFORM_WINDOWS)
 
 #include <io.h> // _access
 #include <windows.h>
@@ -28,11 +28,9 @@
 #define access _access
 #define F_OK 0
 
-#define aligned_alloc(alignment, size) _aligned_malloc(size, alignment)
-#define aligned_free(ptr) _aligned_free(ptr)
+// until windows implements it (c23)
+char* strndup(const char* src, size_t len);
 
-#else
-#error "Unsupported platform"
 #endif
 
 // should be max(1, nproc)
@@ -57,6 +55,9 @@ int px_create_folder(const char* path);
  */
 char* px_get_basename(const char* path);
 
+// set space characters to 0 from end of `str`
+void px_strip_str_end(char* str);
+
 // sleep for `ms` milliseconds
 void px_sleep_ms(int ms);
 
@@ -68,6 +69,12 @@ int px_ceil_div(int a, int b);
 
 // if `*ptr` is not NULL, free it and set it to NULL
 void px_free(void* ptr);
+
+// cross-platform c11 aligned_alloc
+void* px_aligned_alloc(size_t align, size_t size);
+
+// free memory allocated with px_aligned_alloc
+void px_aligned_free(void* ptr);
 
 // check if `path` exists
 bool px_file_exists(const char* path);

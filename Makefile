@@ -10,10 +10,8 @@ ff_dir := $(build_dir)/ffmpeg
 
 basename := pixie
 
-bin := $(addsuffix $(strip $(if $(windows), .exe)), $(basename))
-
-static_lib := lib$(basename).a
-shared_lib := $(addsuffix $(strip $(if $(windows), .dll, .so)), lib$(basename))
+bin := $(strip $(basename).$(strip $(if $(windows), exe)))
+shared_lib := $(strip $(if $(windows), $(basename).dll, lib$(basename).so))
 
 app_src_dirs := app
 lib_src_dirs := src src/util
@@ -45,20 +43,16 @@ cflags := $(strip $(includes) $(base_cflags) $(extra_cflags) -fPIC \
 	$(sanitize:%=-fsanitize=%))
 
 ldflags := $(strip -lm $(ff_libs) $(if $(use_clang), -fuse-ld=lld) \
-	$(sanitize:%=-fsanitize=%) $(extra_ldflags))
+	$(if $(windows),, -ldl -rdynamic) $(sanitize:%=-fsanitize=%) $(extra_ldflags))
 
 default: gen-compile_flags-txt $(build_dir)/$(bin)
 
-lib := $(addprefix $(build_dir)/, $(strip $(if $(shared), $(shared_lib), $(static_lib))))
-$(build_dir)/$(bin): $(lib) $(app_obj_files)
+$(build_dir)/$(bin): $(build_dir)/$(shared_lib) $(app_obj_files)
 	@$(cc) $(app_obj_files) -L$(build_dir) -l$(basename) $(ldflags) -o $@
 
 $(build_dir)/$(shared_lib): $(lib_obj_files)
 	@$(cc) $(lib_obj_files) $(ldflags) -shared \
 		$(if $(windows), -Wl$(comma)--out-implib$(comma)$(build_dir)/$(shared_lib).a) -o $@
-
-$(build_dir)/$(static_lib): $(lib_obj_files)
-	@ar rcs $@ $?
 
 $(build_dir)/%.c.o: %.c Makefile
 	@mkdir -p $(dir $@) &
@@ -67,8 +61,8 @@ $(build_dir)/%.c.o: %.c Makefile
 -include $(dep_files)
 
 clean:
-	@rm -rf $(build_dir)/$(bin) $(build_dir)/$(static_lib) $(build_dir)/$(shared_lib) \
-		$(build_dir)/$(shared_lib).a $(app_src_dirs:%=$(build_dir)/%) $(lib_src_dirs:%=$(build_dir)/%) &
+	@rm -rf $(build_dir)/$(bin) $(build_dir)/$(shared_lib) $(build_dir)/$(shared_lib).a \
+		$(app_src_dirs:%=$(build_dir)/%) $(lib_src_dirs:%=$(build_dir)/%) &
 
 clean-all:
 	rm -rf $(build_dir)/*

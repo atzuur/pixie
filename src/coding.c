@@ -27,14 +27,14 @@ int px_media_ctx_new(PXMediaContext** ctx, const PXSettings* s, int input_idx) {
 
     int ret = init_input(pctx, s->input_files[input_idx]);
     if (ret < 0) {
-        PX_LOG(PX_LOG_ERROR, "Error occurred while processing input file \"%s\"\n",
+        px_log(PX_LOG_ERROR, "Error occurred while processing input file \"%s\"\n",
                s->input_files[input_idx]);
         return ret;
     }
 
     ret = init_output(pctx, s);
     if (ret < 0) {
-        PX_LOG(PX_LOG_ERROR, "Error occurred while processing output file \"%s\"\n", s->output_file);
+        px_log(PX_LOG_ERROR, "Error occurred while processing output file \"%s\"\n", s->output_file);
         return ret;
     }
 
@@ -107,7 +107,7 @@ static int init_input(PXMediaContext* ctx, const char* in_file) {
 
         const AVCodec* decoder = avcodec_find_decoder(istream->codecpar->codec_id);
         if (!decoder) {
-            PX_LOG(PX_LOG_ERROR, "Failed to find decoder for stream %d\n", i);
+            px_log(PX_LOG_ERROR, "Failed to find decoder for stream %d\n", i);
             return AVERROR_DECODER_NOT_FOUND;
         }
 
@@ -138,7 +138,7 @@ static int init_input(PXMediaContext* ctx, const char* in_file) {
     }
 
     if (!streams_found) {
-        PX_LOG(PX_LOG_ERROR, "No video streams found in file \"%s\"\n", in_file);
+        px_log(PX_LOG_ERROR, "No video streams found in file \"%s\"\n", in_file);
         return AVERROR_INVALIDDATA;
     }
 
@@ -176,7 +176,7 @@ static int init_output(PXMediaContext* ctx, const PXSettings* s) {
         if (!encoder) {
             const char* default_enc = "libx264";
             if (s->enc_name_v != NULL)
-                PX_LOG(PX_LOG_WARN, "Failed to find encoder \"%s\", using default encoder %s\n",
+                px_log(PX_LOG_WARN, "Failed to find encoder \"%s\", using default encoder %s\n",
                        s->enc_name_v, default_enc);
             encoder = avcodec_find_encoder_by_name(default_enc);
         }

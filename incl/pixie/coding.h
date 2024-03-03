@@ -3,6 +3,7 @@
 #include <pixie/settings.h>
 
 #include <stdint.h>
+#include <stdatomic.h>
 
 typedef struct AVCodecContext AVCodecContext;
 typedef struct AVFormatContext AVFormatContext;
@@ -18,14 +19,14 @@ typedef struct PXMediaContext {
     AVFormatContext* ofmt_ctx;
 
     // index of the stream currently being processed, -1 if none
-    int stream_idx;
+    atomic_int stream_idx;
 
     // context for transcoding each stream
     PXCodingContext* coding_ctx_arr;
 
-    int64_t frames_decoded;
-    int64_t decoded_frames_dropped;
-    int64_t frames_output;
+    atomic_uint_fast64_t frames_decoded;
+    atomic_uint_fast64_t decoded_frames_dropped;
+    atomic_uint_fast64_t frames_output;
 } PXMediaContext;
 
 PXMediaContext* px_media_ctx_alloc(void);

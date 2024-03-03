@@ -20,7 +20,7 @@ PXFrame* px_frame_alloc(void) {
 
 int px_frame_alloc_bufs(PXFrame* frame) {
     size_t frame_sz = px_frame_size(frame);
-    uint8_t* data = aligned_alloc(32, frame_sz); // todo: platform dependent alignment
+    uint8_t* data = px_aligned_alloc(32, frame_sz); // todo: platform dependent alignment
     if (!data) {
         px_oom_msg(frame_sz);
         return PXERROR(ENOMEM);
@@ -89,7 +89,7 @@ void px_frame_free(PXFrame** frame) {
 }
 
 void px_frame_free_internal(PXFrame* frame) {
-    aligned_free(frame->planes[0].data);
+    px_aligned_free(frame->planes[0].data);
     frame->planes[0].data = NULL;
 }
 
@@ -256,7 +256,7 @@ int px_frame_from_av(PXFrame* dest, const AVFrame* src) {
     enum AVPixelFormat planar_equiv = get_planar_equivalent(src->format);
     if (planar_equiv == AV_PIX_FMT_NONE) {
         const char* fmt_name = av_get_pix_fmt_name(src->format);
-        PX_LOG(PX_LOG_ERROR, "Unsupported pixel format \"%s\"\n", fmt_name ? fmt_name : "(unknown)");
+        px_log(PX_LOG_ERROR, "Unsupported pixel format \"%s\"\n", fmt_name ? fmt_name : "(unknown)");
         return PXERROR(EINVAL);
     }
 
@@ -285,7 +285,7 @@ int px_frame_from_av(PXFrame* dest, const AVFrame* src) {
         return 0;
     }
 
-    PX_LOG(PX_LOG_INFO, "Converting from %s to %s\n", av_get_pix_fmt_name(src->format),
+    px_log(PX_LOG_INFO, "Converting from %s to %s\n", av_get_pix_fmt_name(src->format),
            av_get_pix_fmt_name(planar_equiv));
 
     struct SwsContext* sws = sws_getContext(src->width, src->height, src->format, dest->width, dest->height,

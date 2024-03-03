@@ -6,7 +6,7 @@
 #include <stdint.h>
 #include <string.h>
 
-#ifdef C11_THREADS
+#ifdef PX_THREADS_C11
 static inline const char* c11_thrd_strerror(int err) {
     switch (err) {
         case thrd_success:
@@ -31,13 +31,13 @@ static inline const char* c11_thrd_strerror(int err) {
 int px_thrd_launch(PXThread* thread) {
     assert(thread->func);
 
-#ifdef C11_THREADS
+#ifdef PX_THREADS_C11
     int res = thrd_create(&thread->thrd, thread->func, thread->args);
     if (res != thrd_success)
         CTHRD_THROW_MSG("thrd_create", res);
     return res;
 #endif
-#ifdef WIN32_THREADS
+#ifdef PX_THREADS_WIN32
     thread->thrd = CreateThread(0, 0, (LPTHREAD_START_ROUTINE)thread->func, thread->args, 0, 0);
     if (!thread->thrd) {
         OS_THROW_MSG("CreateThread", 0);
@@ -45,7 +45,7 @@ int px_thrd_launch(PXThread* thread) {
     }
     return 0;
 #endif
-#ifdef POSIX_THREADS
+#ifdef PX_THREADS_POSIX
     typedef void* (*pthread_func)(void*);
     int res = pthread_create(&thread->thrd, 0, (pthread_func)thread->func, thread->args);
     if (res != 0)
@@ -57,14 +57,14 @@ int px_thrd_launch(PXThread* thread) {
 int px_thrd_join(PXThread* thread, int* return_code) {
     assert(thread->thrd);
 
-#ifdef C11_THREADS
+#ifdef PX_THREADS_C11
     int res = thrd_join(thread->thrd, return_code);
     if (res != thrd_success) {
         CTHRD_THROW_MSG("thrd_join", res);
         goto end;
     }
 #endif
-#ifdef WIN32_THREADS
+#ifdef PX_THREADS_WIN32
     DWORD res = WaitForSingleObject(thread->thrd, INFINITE);
     if (res != WAIT_OBJECT_0) {
         OS_THROW_MSG("WaitForSingleObject", 0);
@@ -72,21 +72,21 @@ int px_thrd_join(PXThread* thread, int* return_code) {
     }
 
     DWORD ret;
-    res = (DWORD)GetExitCodeThread(thread->thrd, &ret);
-    if (!res) {
+    res = !(DWORD)GetExitCodeThread(thread->thrd, &ret);
+    if (res) {
         OS_THROW_MSG("GetExitCodeThread", 0);
         goto end;
     }
 
-    res = (DWORD)CloseHandle(thread->thrd);
-    if (!res) {
+    res = !(DWORD)CloseHandle(thread->thrd);
+    if (res) {
         OS_THROW_MSG("CloseHandle", 0);
         goto end;
     }
 
     *return_code = (int)ret;
 #endif
-#ifdef POSIX_THREADS
+#ifdef PX_THREADS_POSIX
     void* ret;
     int res = pthread_join(thread->thrd, &ret);
     if (res != 0) {
@@ -103,13 +103,13 @@ end:
 }
 
 void px_thrd_exit(int ret) {
-#ifdef C11_THREADS
+#ifdef PX_THREADS_C11
     thrd_exit(ret);
 #endif
-#ifdef WIN32_THREADS
+#ifdef PX_THREADS_WIN32
     ExitThread((DWORD)ret);
 #endif
-#ifdef POSIX_THREADS
+#ifdef PX_THREADS_POSIX
     pthread_exit((void*)(intptr_t)ret);
 #endif
 }

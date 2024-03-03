@@ -123,21 +123,25 @@ static int filter_encode_frame(PXContext* pxc, AVFrame* frame) {
     int ret = px_frame_from_av(&px_frame, frame);
     if (ret < 0)
         return ret;
+    const PXFrame* last_out_frame = &px_frame;
 
     for (int i = 0; i < pxc->fltr_ctx->n_filters; i++) {
         PXFilter* fltr = pxc->fltr_ctx->filters[i];
 
-        fltr->frame = &px_frame;
+        fltr->in_frame = last_out_frame;
+        px_frame_new(&fltr->out_frame, fltr->in_frame->width, fltr->in_frame->height, fltr->in_frame->pix_fmt,
+                     NULL);
+        fltr->out_frame->av_pix_fmt = fltr->in_frame->av_pix_fmt;
         fltr->frame_num = pxc->media_ctx->frames_decoded;
 
-        ret = fltr->apply(fltr);
+        ret = fltr->apply(fltr); // TODO: optional apply
         if (ret < 0) {
-            PX_LOG(PX_LOG_ERROR, "Failed to apply filter \"%s\"\n", fltr->name);
+            px_log(PX_LOG_ERROR, "Failed to apply filter \"%s\"\n", fltr->name);
             goto end;
         }
+        last_out_frame = fltr->out_frame;
     }
-
-    px_frame_to_av(frame, &px_frame);
+    px_frame_to_av(frame, last_out_frame);
 
     enum AVPixelFormat enc_pix_fmt =
         pxc->media_ctx->coding_ctx_arr[pxc->media_ctx->stream_idx].enc_ctx->pix_fmt;
@@ -152,7 +156,7 @@ static int filter_encode_frame(PXContext* pxc, AVFrame* frame) {
             goto end;
         }
 
-        PX_LOG(PX_LOG_INFO, "Converting frame from %s to %s\n", av_get_pix_fmt_name(frame->format),
+        px_log(PX_LOG_INFO, "Converting frame from %s to %s\n", av_get_pix_fmt_name(frame->format),
                av_get_pix_fmt_name(enc_pix_fmt));
         ret = conv_pix_fmt(conv_frame, frame, enc_pix_fmt);
         if (ret < 0) {
@@ -212,7 +216,7 @@ int px_transcode(PXContext* pxc) {
     int ret = 0;
 
     AVPacket* pkt = av_packet_alloc();
-    while (1) {
+    while (true) {
         ret = read_frame(pxc->media_ctx, pkt);
         if (ret == AVERROR(EAGAIN)) {
             continue;

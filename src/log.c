@@ -8,7 +8,7 @@ const char* const px_log_names[PX_LOG_COUNT] = {
     "quiet", "error", "progress", "warn", "info", "verbose",
 };
 const int px_log_colors[PX_LOG_COUNT] = {
-    0, 196, 229, 214, 255, 221,
+    0, 1, 229, 214, 255, 221,
 };
 
 char* px_log_color(int c, char buf[static PX_LOG_MAX_COLOR_LEN]) {
@@ -53,7 +53,7 @@ int px_log_num_levels(void) {
     return PX_LOG_COUNT;
 }
 
-void px_log_msg(PXLogLevel level, const char* msg, ...) {
+void px_log(PXLogLevel level, const char* msg, ...) {
     if (level > px_global_loglevel)
         return;
 

@@ -13,35 +13,33 @@ PXSettings* px_settings_alloc(void) {
 
 int px_settings_check(PXSettings* s) {
     if (!s->n_input_files) {
-        PX_LOG(PX_LOG_ERROR, "No input file specified\n");
+        px_log(PX_LOG_ERROR, "No input file specified\n");
         return PXERROR(EINVAL);
     }
 
     if (!s->output_file) {
-        PX_LOG(PX_LOG_ERROR, "No output file specified\n");
+        px_log(PX_LOG_ERROR, "No output file specified\n");
         return PXERROR(EINVAL);
     }
 
     for (int i = 0; i < s->n_input_files; i++) {
         if (!px_file_exists(s->input_files[i])) {
-            PX_LOG(PX_LOG_ERROR, "File \"%s\" does not exist\n", s->input_files[i]);
+            px_log(PX_LOG_ERROR, "File \"%s\" does not exist\n", s->input_files[i]);
             return PXERROR(ENOENT);
         }
     }
 
     if (s->n_input_files > 1) {
         if (!s->output_folder) {
-            // /input_files[i] will be appended later
+            // /input_files[i] will be appended during transcoding
             s->output_folder = s->output_file;
             s->output_file = NULL;
         }
 
-        if (!px_create_folder(s->output_folder)) {
-            char err_msg[256];
-            px_last_os_errstr(err_msg, 0);
-            int err = PX_LAST_OS_ERR();
-            PX_LOG(PX_LOG_ERROR, "Failed to create output directory: %s (%d)\n", err_msg, err);
-            return err;
+        int ret = px_create_folder(s->output_folder);
+        if (ret < 0) {
+            px_log(PX_LOG_ERROR, "Failed to create output directory \"%s\"\n", s->output_folder);
+            return ret;
         }
     }
 
