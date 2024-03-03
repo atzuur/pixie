@@ -142,7 +142,7 @@ gcc test_filter.c -shared -o test.so
 ```
 
 ## Extending the frontend
-The reference implementation (CLI app) can be found in [`app/`](`app/`), but more documentation regarding creating your own frontend will be coming later as the API is still being refined.
+The reference implementation (CLI app) can be found in [`app/`](app/), but more documentation regarding creating your own frontend will be coming later as the API is still being refined.
 
 ## Contact
 For any issues or questions, you can DM me on Discord (`@atzur`) or [create an issue on GitHub](https://github.com/atzuur/pixie/issues/new).
