@@ -84,7 +84,7 @@ make
 ```
 
 <details>
-  <summary>Addional arguments to the Makefile</summary>
+  <summary>Additional arguments to the Makefile</summary>
   
   * `cc`: C compiler to build with, must support the same basic argument syntax as GCC and Clang (default: `gcc`)
   * `build_dir`: Directory to place build artifacts in (default: `build`)
@@ -112,7 +112,7 @@ There is a template for a filter named `test` in [`tests/test_filter.c`](tests/t
 
 ### Architecture
 #### Loading filters
-For each filter, pixie will look for a DLL within the specified filter directory whose filename corresponds to the specified filter name. For example, given a filter name `"foo"`, pixie will look for `<filter directory>/<filter name>.so` (or `.dll` on Windows). After the DLL is found, pixie will call its `pixie_export_filter` function (see below) and initialize the filter via `PXFilter::init()`, passing the specified options to it as the `args` parameter. 
+For each filter, pixie will look for a DLL within the specified filter directory whose filename corresponds to the specified filter name. For example, given a filter name `"foo"`, pixie will look for `<filter directory>/foo.so` (or `.dll` on Windows). After the DLL is found, pixie will call its `pixie_export_filter` function (see below) and initialize the filter via the returned `PXFilter::init()`, passing the specified options to it as the `args` parameter.
 
 #### Applying filters
 After a frame is decoded, pixie will call each filter's `PXFilter::apply()` function on it in the order that the filters were specified in. If the input file is detected to have a pixel format not included in the enum `PXPixelFormat`, pixie will automatically convert the frames to a compatible format (if possible without data loss).
