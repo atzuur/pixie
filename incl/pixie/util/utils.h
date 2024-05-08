@@ -3,7 +3,7 @@
 #include <pixie/util/platform.h>
 
 #include <assert.h>
-#include <stdbool.h>
+
 #include <stdio.h>
 
 // same as ffmpeg's AVERROR(x) for consistency

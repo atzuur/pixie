@@ -1,7 +1,5 @@
 #pragma once
 
-#include <pixie/settings.h>
-
 #include <stdint.h>
 #include <stdatomic.h>
 
@@ -30,5 +28,6 @@ typedef struct PXMediaContext {
 } PXMediaContext;
 
 PXMediaContext* px_media_ctx_alloc(void);
-int px_media_ctx_new(PXMediaContext** ctx, const PXSettings* s, int input_idx);
+int px_media_ctx_new(PXMediaContext** ctx, const char* in_file, const char* out_file, const char* enc_name_v,
+                     const char* enc_opts_v);
 void px_media_ctx_free(PXMediaContext** ctx);

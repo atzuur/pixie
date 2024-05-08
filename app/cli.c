@@ -1,5 +1,7 @@
 #include "cli.h"
+#include "app.h"
 
+#include <pixie/pixie.h>
 #include <pixie/log.h>
 #include <pixie/util/strconv.h>
 
@@ -64,16 +66,13 @@ static inline int missing_value(const char* opt) {
     return PXERROR(EINVAL);
 }
 
-int px_parse_args(int argc, char** argv, PXSettings* s) {
-    s->loglevel = PX_LOG_NONE;
-    argv++, argc--; // skip program name
-
-    if (argc < 1) {
-        px_print_info(argv[-1], false);
-        return PX_HELP_PRINTED;
+int parse_args(int argc, char** argv, Settings* s) {
+    if (argc <= 1) {
+        px_print_info(argv[0], false);
+        return HELP_PRINTED;
     }
 
-    for (char** arg_it = argv; *arg_it != NULL; arg_it++) {
+    for (char** arg_it = argv + 1; *arg_it != NULL; arg_it++) {
         const char* opt = *arg_it;
         if (!is_opt(opt)) {
             px_log(PX_LOG_WARN, "Ignoring argument \"%s\"\n", opt);
@@ -81,8 +80,8 @@ int px_parse_args(int argc, char** argv, PXSettings* s) {
         }
 
         if (opt_matches(opt, "--help", "-h")) {
-            px_print_info(argv[-1], true);
-            return PX_HELP_PRINTED;
+            px_print_info(argv[0], true);
+            return HELP_PRINTED;
         }
 
         if (opt_matches(opt, "--input", "-i")) {
@@ -99,7 +98,6 @@ int px_parse_args(int argc, char** argv, PXSettings* s) {
         }
 
         if (opt_matches(opt, "--output", "-o")) {
-            // folder check done later
             s->output_file = strdup(*++arg_it);
             if (!is_value(s->output_file))
                 return missing_value(opt);
@@ -132,9 +130,9 @@ int px_parse_args(int argc, char** argv, PXSettings* s) {
                 arg_it++;
             }
 
-            s->filter_opts = calloc((size_t)s->n_filters, sizeof(char*));
+            s->filter_opts = calloc((size_t)s->n_filters, sizeof *s->filter_opts);
             if (!s->filter_opts) {
-                px_oom_msg((size_t)s->n_filters * sizeof(char*));
+                px_oom_msg((size_t)s->n_filters * sizeof *s->filter_opts);
                 return PXERROR(ENOMEM);
             }
 
@@ -144,11 +142,17 @@ int px_parse_args(int argc, char** argv, PXSettings* s) {
                     continue;
 
                 *settings = '\0';
-                s->filter_opts[i] = ++settings;
-                if (!s->filter_opts[i][0]) {
-                    px_log(PX_LOG_ERROR, "Expected settings for filter \"%s after \":\"\n",
+                if (!*++settings) {
+                    px_log(PX_LOG_ERROR, "Expected settings for filter \"%s\" after \":\"\n",
                            s->filter_names[i]);
                     return PXERROR(EINVAL);
+                }
+
+                int ret = px_map_parse(&s->filter_opts[i], settings);
+                if (ret < 0) {
+                    px_log(PX_LOG_ERROR, "Failed to parse settings \"%s\" for filter \"%s\"\n", settings,
+                           s->filter_names[i]);
+                    return ret;
                 }
             }
 
@@ -168,11 +172,11 @@ int px_parse_args(int argc, char** argv, PXSettings* s) {
             if (!is_value(value))
                 return missing_value(opt);
 
-            int ret = px_strtoi(&s->loglevel, value);
+            int ret = px_strtoi(&s->log_level, value);
             if (ret < 0)
-                s->loglevel = px_loglevel_from_str(value);
+                s->log_level = px_log_level_from_str(value);
 
-            if (s->loglevel <= PX_LOG_NONE || s->loglevel >= px_log_num_levels()) {
+            if (s->log_level <= PX_LOG_NONE || s->log_level >= px_log_num_levels()) {
                 px_log(PX_LOG_ERROR, "Invalid log level: \"%s\"\n", value);
                 return PXERROR(EINVAL);
             }
@@ -183,4 +187,9 @@ int px_parse_args(int argc, char** argv, PXSettings* s) {
     }
 
     return 0;
+}
+
+void parsed_args_free(Settings* settings) {
+    px_free(&settings->filter_opts);
+    px_free(&settings->output_file);
 }

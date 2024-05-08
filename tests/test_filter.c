@@ -1,11 +1,12 @@
 #include <pixie/pixie.h>
+#include <pixie/log.h>
 #include <pixie/util/map.h>
 
 #include <errno.h>
 
 typedef struct TestFilterOptions {
     int foo;
-    bool flombigate;
+    bool bar;
 } TestFilterOptions;
 
 void test_filter_free(PXFilter* filter) {
@@ -25,9 +26,9 @@ int test_filter_init(PXFilter* filter, const PXMap* args) {
         return ret;
     }
 
-    ret = px_map_get_bool(args, &opts->flombigate, "flombigate");
+    ret = px_map_get_bool(args, &opts->bar, "bar");
     if (ret == PXERROR(ENOENT)) {
-        opts->flombigate = true; // default value
+        opts->bar = true; // default value
     } else if (ret < 0) {
         return ret;
     }
@@ -46,7 +47,7 @@ int test_filter_apply(PXFilter* filter) {
         for (int y = 0; y < in_plane->height; y++) {
             for (int x = 0; x < in_plane->width; x++) {
                 uint8_t pixel = in_plane->data[y * in_plane->stride + x];
-                if (opts->flombigate) {
+                if (opts->bar) {
                     pixel = ~pixel;
                 }
                 pixel += opts->foo;

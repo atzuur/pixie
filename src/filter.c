@@ -38,25 +38,30 @@ int px_filter_from_dll(PXFilter** filter, const char* dll_path) {
     ExportFilterFunc export_filter = *(ExportFilterFunc*)&export_addr;
 
     *filter = export_filter();
-    if (!*filter) {
+    PXFilter* pf = *filter;
+    if (!pf) {
         px_log(PX_LOG_ERROR, "Failed to create filter from \"%s\"\n", dll_path);
         return PXERROR(ENOMEM);
     }
-    if (!(*filter)->name) {
+    if (!pf->name) {
         px_log(PX_LOG_ERROR, "Filter name not set in \"%s\"\n", dll_path);
         return PXERROR(EINVAL);
     }
 
-    (*filter)->dll_handle = dll_handle;
+    pf->dll_handle = dll_handle;
     return 0;
 }
 
 void px_filter_free(PXFilter** filter) {
     if (!filter || !*filter)
         return;
+    PXFilter* pf = *filter;
 
-    if ((*filter)->dll_handle)
-        px_dll_close((*filter)->dll_handle);
+    if (pf->free)
+        pf->free(pf);
+    if (pf->dll_handle)
+        px_dll_close(pf->dll_handle);
+
     px_free(filter);
 }
 
@@ -84,44 +89,36 @@ static char* get_dll_path(const char* filter_dir, const char* filter_name) {
     return dll_path;
 }
 
-int px_filter_ctx_new(PXFilterContext** ctx, const PXSettings* settings) {
-    int ret = 0;
-
+int px_filter_ctx_new(PXFilterContext** ctx, const char* filter_dir, const char* const* filter_names,
+                      const PXMap* filter_opts, int n_filters) {
     *ctx = px_filter_ctx_alloc();
     if (!*ctx)
         return PXERROR(ENOMEM);
 
     PXFilterContext* pctx = *ctx;
-    pctx->n_filters = settings->n_filters;
+    pctx->n_filters = n_filters;
+    pctx->filter_opts = filter_opts;
+
+    int ret = 0;
 
     pctx->filters = calloc((size_t)pctx->n_filters, sizeof(PXFilter*));
     if (!pctx->filters) {
         px_oom_msg((size_t)pctx->n_filters * sizeof(PXFilter*));
-        goto fail;
-    }
-
-    pctx->filter_opts = calloc((size_t)pctx->n_filters, sizeof *pctx->filter_opts);
-    if (!pctx->filter_opts) {
-        px_oom_msg((size_t)pctx->n_filters * sizeof *pctx->filter_opts);
+        ret = PXERROR(ENOMEM);
         goto fail;
     }
 
     for (int i = 0; i < pctx->n_filters; i++) {
-        char* dll_path = get_dll_path(settings->filter_dir, settings->filter_names[i]);
+        char* dll_path = get_dll_path(filter_dir, filter_names[i]);
         if (!dll_path) {
             ret = PXERROR(ENOMEM);
             goto fail;
         }
+        // TODO: decouple this behavior
         ret = px_filter_from_dll(&pctx->filters[i], dll_path);
         px_free(&dll_path);
         if (ret < 0)
             goto fail;
-
-        if (settings->filter_opts[i]) {
-            ret = px_map_parse(&pctx->filter_opts[i], settings->filter_opts[i]);
-            if (ret < 0)
-                goto fail;
-        }
 
         if (pctx->filters[i]->init) {
             ret = pctx->filters[i]->init(pctx->filters[i], &pctx->filter_opts[i]);
@@ -145,14 +142,9 @@ void px_filter_ctx_free(PXFilterContext** ctx) {
     PXFilterContext* pctx = *ctx;
 
     for (int i = 0; i < pctx->n_filters; i++) {
-        if (pctx->filters[i] && pctx->filters[i]->free)
-            pctx->filters[i]->free(pctx->filters[i]);
-
         px_filter_free(&pctx->filters[i]);
-        px_map_free(&pctx->filter_opts[i]);
     }
 
     px_free(pctx->filters);
-    px_free(&pctx->filter_opts);
     px_free(ctx);
 }

@@ -127,18 +127,18 @@ Filters can currently only take one frame as input at a time (`PXFilter::in_fram
 Filters may be written in any language, but they must be compiled into shared libraries with at least the `pixie_export_filter` function exported (GNU `ld` exports symbols by default). The signature of `pixie_export_filter` must be equivalent to `PXFilter* pixie_export_filter(void)` in C. The `pixie_export_filter` function must set at least `PXFilter::name` and `PXFilter::apply()`, `PXFilter::init()` and `PXFilter::free()` are optional.
 
 ### Windows oddities
-On Windows, filters need to be linked with either an import library for the pixie library DLL (`pixie.dll.a`) orth the DLL itself (`pixie.dll`). This is because filters need to be able to call functions from the pixie DLL, which they will only have access to after being loaded in by pixie (i.e. at runtime). As Windows doesn't support [exporting symbols that are visible at runtime of the DLL](https://ftp.gnu.org/old-gnu/Manuals/ld-2.9.1/html_node/ld_3.html#:~:text=%2DE-,%2D%2Dexport%2Ddynamic), the locations need to be known statically at link time.
+On Windows, filters need to be linked with either an import library for the pixie library DLL (`pixie.dll.a`) or the DLL itself (`pixie.dll`). This is because filters need to be able to call functions from the pixie DLL, which they will only have access to after being loaded in by pixie (i.e. at runtime). As Windows doesn't support [exporting symbols that are visible at runtime of the DLL](https://ftp.gnu.org/old-gnu/Manuals/ld-2.9.1/html_node/ld_3.html#:~:text=%2DE-,%2D%2Dexport%2Ddynamic), the locations need to be known statically at link time.
 
 ### Example commands to build [`tests/test_filter.c`](tests/test_filter.c):
 On Windows:
 ```pwsh
 # Assuming ./pixie/incl is the include directory and either ./pixie/pixie.dll or ./pixie/pixie.dll.a exist
-gcc test_filter.c -shared -Ipixie/incl -Lpixie -lpixie -o test.dll
+gcc test_filter.c -std=c2x -shared -Ipixie/incl -Lpixie -lpixie -o test.dll
 ```
 
 On Unix-likes:
 ```bash
-gcc test_filter.c -shared -o test.so
+gcc test_filter.c -std=c2x -shared -o test.so
 ```
 
 ## Extending the frontend

@@ -1,8 +1,10 @@
 #pragma once
 
-#include <pixie/pixie.h>
+#include "app.h"
 
-#define PX_HELP_PRINTED 2
+#define HELP_PRINTED PXERROR(2)
 
-int px_parse_args(int argc, char** argv, PXSettings* s);
-void px_print_info(const char* prog_name, bool full);
+int parse_args(int argc, char** argv, Settings* s);
+void parsed_args_free(Settings* s);
+
+void print_info(const char* prog_name, bool full);

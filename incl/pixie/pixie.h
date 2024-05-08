@@ -2,12 +2,9 @@
 
 #include <pixie/coding.h>
 #include <pixie/filter.h>
-#include <pixie/settings.h>
 #include <pixie/util/thread.h>
 
-#include <stdbool.h>
-
-#define PX_VERSION "0.3.0"
+#define PX_VERSION "0.3.1"
 
 typedef struct PXContext {
     PXMediaContext* media_ctx;
@@ -18,7 +15,6 @@ typedef struct PXContext {
     int input_idx;
 } PXContext;
 
-int px_main(PXSettings* s);
 int px_transcode(PXContext* pxc);
 
 PXContext* px_ctx_alloc(void);

@@ -7,6 +7,7 @@
 
 #define PX_FRAME_MAX_PLANES 4
 
+// TODO: abi stability :(
 typedef struct PXVideoPlane {
     int width;
     int height;

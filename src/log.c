@@ -2,7 +2,7 @@
 
 #include <libavutil/log.h>
 
-PXLogLevel px_global_loglevel = PX_LOG_WARN; // default
+PXLogLevel px_global_log_level = PX_LOG_WARN; // default
 
 const char* const px_log_names[PX_LOG_COUNT] = {
     "quiet", "error", "progress", "warn", "info", "verbose",
@@ -16,7 +16,7 @@ char* px_log_color(int c, char buf[static PX_LOG_MAX_COLOR_LEN]) {
     return buf;
 }
 
-PXLogLevel px_loglevel_from_str(const char* str) {
+PXLogLevel px_log_level_from_str(const char* str) {
     for (int i = 0; i < PX_LOG_COUNT; i++) {
         if (strcmp(px_log_names[i], str) == 0)
             return (PXLogLevel)i;
@@ -24,7 +24,7 @@ PXLogLevel px_loglevel_from_str(const char* str) {
     return PX_LOG_NONE;
 }
 
-static inline int px_loglevel_to_av(PXLogLevel level) {
+static inline int px_log_level_to_av(PXLogLevel level) {
     switch (level) {
         case PX_LOG_QUIET:
             return AV_LOG_QUIET;
@@ -45,8 +45,8 @@ void px_log_set_level(PXLogLevel level) {
     if (level == PX_LOG_NONE)
         level = PX_LOG_WARN;
 
-    av_log_set_level(px_loglevel_to_av(level));
-    px_global_loglevel = level;
+    av_log_set_level(px_log_level_to_av(level));
+    px_global_log_level = level;
 }
 
 int px_log_num_levels(void) {
@@ -54,7 +54,7 @@ int px_log_num_levels(void) {
 }
 
 void px_log(PXLogLevel level, const char* msg, ...) {
-    if (level > px_global_loglevel)
+    if (level > px_global_log_level)
         return;
 
     va_list args;

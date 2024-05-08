@@ -7,7 +7,8 @@
 #include <libavformat/avformat.h>
 
 static int init_input(PXMediaContext* ctx, const char* in_file);
-static int init_output(PXMediaContext* ctx, const PXSettings* s);
+static int init_output(PXMediaContext* ctx, const char* out_file, const char* enc_name_v,
+                       const char* enc_opts_v);
 
 PXMediaContext* px_media_ctx_alloc(void) {
     PXMediaContext* ctx = calloc(1, sizeof *ctx);
@@ -16,7 +17,8 @@ PXMediaContext* px_media_ctx_alloc(void) {
     return ctx;
 }
 
-int px_media_ctx_new(PXMediaContext** ctx, const PXSettings* s, int input_idx) {
+int px_media_ctx_new(PXMediaContext** ctx, const char* in_file, const char* out_file, const char* enc_name_v,
+                     const char* enc_opts_v) {
     *ctx = px_media_ctx_alloc();
     if (!*ctx)
         return PXERROR(ENOMEM);
@@ -25,16 +27,15 @@ int px_media_ctx_new(PXMediaContext** ctx, const PXSettings* s, int input_idx) {
 
     pctx->stream_idx = -1;
 
-    int ret = init_input(pctx, s->input_files[input_idx]);
+    int ret = init_input(pctx, in_file);
     if (ret < 0) {
-        px_log(PX_LOG_ERROR, "Error occurred while processing input file \"%s\"\n",
-               s->input_files[input_idx]);
+        px_log(PX_LOG_ERROR, "Error occurred while processing input file \"%s\"\n", in_file);
         return ret;
     }
 
-    ret = init_output(pctx, s);
+    ret = init_output(pctx, out_file, enc_name_v, enc_opts_v);
     if (ret < 0) {
-        px_log(PX_LOG_ERROR, "Error occurred while processing output file \"%s\"\n", s->output_file);
+        px_log(PX_LOG_ERROR, "Error occurred while processing output file \"%s\"\n", out_file);
         return ret;
     }
 
@@ -71,7 +72,6 @@ void px_media_ctx_free(PXMediaContext** ctx) {
     }
 
     pctx->stream_idx = -1;
-
     px_free(ctx);
 }
 
@@ -95,16 +95,13 @@ static int init_input(PXMediaContext* ctx, const char* in_file) {
     }
 
     bool streams_found = false;
-
     for (unsigned i = 0; i < ctx->ifmt_ctx->nb_streams; i++) {
         enum AVMediaType stream_type = ctx->ifmt_ctx->streams[i]->codecpar->codec_type;
         if (stream_type != AVMEDIA_TYPE_VIDEO)
             continue;
-
         streams_found = true;
 
         AVStream* istream = ctx->ifmt_ctx->streams[i];
-
         const AVCodec* decoder = avcodec_find_decoder(istream->codecpar->codec_id);
         if (!decoder) {
             px_log(PX_LOG_ERROR, "Failed to find decoder for stream %d\n", i);
@@ -145,15 +142,15 @@ static int init_input(PXMediaContext* ctx, const char* in_file) {
     return 0;
 }
 
-static int init_output(PXMediaContext* ctx, const PXSettings* s) {
-    int ret = avformat_alloc_output_context2(&ctx->ofmt_ctx, NULL, NULL, s->output_file);
+static int init_output(PXMediaContext* ctx, const char* out_file, const char* enc_name_v,
+                       const char* enc_opts_v) {
+    int ret = avformat_alloc_output_context2(&ctx->ofmt_ctx, NULL, NULL, out_file);
     if (ret < 0) {
         LAV_THROW_MSG("avformat_alloc_output_context2", ret);
         return ret;
     }
 
     for (unsigned i = 0; i < ctx->ifmt_ctx->nb_streams; i++) {
-
         AVStream* ostream = avformat_new_stream(ctx->ofmt_ctx, NULL);
         if (!ostream) {
             LAV_THROW_MSG("avformat_new_stream", ret);
@@ -161,7 +158,6 @@ static int init_output(PXMediaContext* ctx, const PXSettings* s) {
         }
 
         enum AVMediaType stream_type = ctx->ifmt_ctx->streams[i]->codecpar->codec_type;
-
         if (stream_type != AVMEDIA_TYPE_VIDEO) {
             ret = avcodec_parameters_copy(ostream->codecpar, ctx->ifmt_ctx->streams[i]->codecpar);
             if (ret < 0) {
@@ -172,12 +168,13 @@ static int init_output(PXMediaContext* ctx, const PXSettings* s) {
             continue;
         }
 
-        const AVCodec* encoder = avcodec_find_encoder_by_name(s->enc_name_v);
-        if (!encoder) {
+        const AVCodec* encoder = avcodec_find_encoder_by_name(enc_name_v);
+        if (!encoder && enc_name_v) {
+            px_log(PX_LOG_ERROR, "Failed to find encoder \"%s\"\n", enc_name_v);
+            return AVERROR_ENCODER_NOT_FOUND;
+        } else if (!encoder) {
             const char* default_enc = "libx264";
-            if (s->enc_name_v != NULL)
-                px_log(PX_LOG_WARN, "Failed to find encoder \"%s\", using default encoder %s\n",
-                       s->enc_name_v, default_enc);
+            px_log(PX_LOG_INFO, "No encoder specified, using default encoder (%s)\n", default_enc);
             encoder = avcodec_find_encoder_by_name(default_enc);
         }
 
@@ -198,7 +195,7 @@ static int init_output(PXMediaContext* ctx, const PXSettings* s) {
         enc_ctx->pix_fmt = dec_ctx->pix_fmt;
 
         AVDictionary* opts = NULL;
-        ret = av_dict_parse_string(&opts, s->enc_opts_v, "=", ":", 0);
+        ret = av_dict_parse_string(&opts, enc_opts_v, "=", ":", 0);
         if (ret < 0) {
             LAV_THROW_MSG("av_dict_parse_string", ret);
             return ret;
@@ -222,11 +219,11 @@ static int init_output(PXMediaContext* ctx, const PXSettings* s) {
             enc_ctx->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
 
         if (av_log_get_level() >= AV_LOG_INFO)
-            av_dump_format(ctx->ofmt_ctx, (int)i, s->output_file, true);
+            av_dump_format(ctx->ofmt_ctx, (int)i, out_file, true);
     }
 
     if (!(ctx->ofmt_ctx->oformat->flags & AVFMT_NOFILE)) {
-        ret = avio_open(&ctx->ofmt_ctx->pb, s->output_file, AVIO_FLAG_WRITE);
+        ret = avio_open(&ctx->ofmt_ctx->pb, out_file, AVIO_FLAG_WRITE);
         if (ret < 0) {
             LAV_THROW_MSG("avio_open", ret);
             return ret;

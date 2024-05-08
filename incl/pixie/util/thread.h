@@ -5,7 +5,6 @@
 
 #include <pixie/util/platform.h>
 
-#include <stdbool.h>
 #include <stdatomic.h>
 
 #ifdef PX_PLATFORM_WINDOWS

@@ -105,6 +105,7 @@ static int parse_pair(PXPair* dest, const char* str_begin, const char* str_end) 
     size_t value_len = (size_t)(str_end - equals - 1);
     if (value_len == 0) {
         px_log(PX_LOG_ERROR, "Empty value in key-value pair \"%.*s\"\n", str_len, str_begin);
+        px_free(&dest->key);
         return PXERROR(EINVAL);
     }
     dest->value = strndup(equals + 1, value_len);

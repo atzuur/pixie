@@ -7,14 +7,14 @@ typedef enum PxLogLevel : int {
     PX_LOG_NONE = -1,
     PX_LOG_QUIET, // no output
     PX_LOG_ERROR, // errors only
-    PX_LOG_PROGRESS, // + progress info (default)
-    PX_LOG_WARN, // + warnings
+    PX_LOG_PROGRESS, // + progress info
+    PX_LOG_WARN, // + warnings (default)
     PX_LOG_INFO, // + misc. info
     PX_LOG_VERBOSE, // + everything else
     PX_LOG_COUNT, // number of log levels (not a valid log level)
 } PXLogLevel;
 
-extern PXLogLevel px_global_loglevel;
+extern PXLogLevel px_global_log_level;
 
 extern const char* const px_log_names[];
 extern const int px_log_colors[];
@@ -25,7 +25,7 @@ extern const int px_log_colors[];
 
 char* px_log_color(int c, char buf[static PX_LOG_MAX_COLOR_LEN]);
 
-PXLogLevel px_loglevel_from_str(const char* str);
+PXLogLevel px_log_level_from_str(const char* str);
 
 void px_log_set_level(PXLogLevel level);
 
